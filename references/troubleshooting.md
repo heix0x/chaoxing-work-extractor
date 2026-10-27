@@ -117,3 +117,61 @@ B
 | `fetch` 的 txt 只有导航栏没有题目 | 页面渲染没完成 | 加 `--headful` 观察，或调大等待 |
 | 解析题数 < 标注题数 | 某章节格式有变体 | 看 `warnings` 点名了哪个章节，给 `cx_parser.py` 补正则 |
 | `run` 退出码 3 | 有 warning，通常是没抓全 | 别直接写笔记，先看 txt |
+
+---
+
+## 七、新版答题页（2025+）的三个坑（2026-10-27 实测，Windows + Edge）
+
+### 1. 登录「成功」但下一次 check 又掉线
+
+Chromium 的持久化 profile **只把带过期时间的 cookie 写盘**，超星的 `_uid`/`UID`/`uf`
+是会话 cookie（expires=-1），关浏览器就没了。表现：`login` 报
+`{"logged_in": true, "cookies": ["fid","_uid","UID","uf"]}`，下一次 `check` 只剩 `fid`，
+`fetch` 抓到的是 `passport2.chaoxing.com/login` 的登录页（标题「用户登录」）。
+
+已修：`cxwork.py` 增加 `STATE_FILE`（profile 目录下 `state.json`），登录成功与
+每次 `Session.__exit__` 都存 `ctx.storage_state()`，启动时 `add_cookies` 灌回。
+
+⚠️ 另一个坑：`fid` 只是学校编号（如 1415），**未登录时也存在**。旧代码
+`is_logged_in()` 只要有任一 AUTH_COOKIES 就算登录，导致 `login` 一进循环就判定成功、
+根本不等人扫码。现在改成必须命中 `STRONG_COOKIES = (_uid, UID, uf)` 之一。
+
+### 2. 选择题不是 input，是 div 点击
+
+```html
+<div class="clearfix answerBg" onclick="addChoice(this)" qtype="0" qid="406119094">
+  <span data="A" class="choice406119094 num_option">A</span>
+  <div class="answer_p"><p>功能模型，对象模型……</p></div>
+</div>
+```
+
+- 没有 `input[type=radio]` / `checkbox`，老的 `_classify` 一律判成 `unknown`。
+- 点击后由 `addChoice()` 把选中的字母拼起来写入隐藏域 `#answer{qid}`。
+- **判断题的 `span[data]` 是 `true` / `false`**，不是 A/B；`#answer{qid}` 的值也是 `true/false`。
+- 多选 `qtype="1"`，走 `addMultipleChoice()`。
+
+### 3. 填空 / 简答 / 案例是 UEditor 富文本
+
+- 每个空一个编辑器，textarea 名 `answerEditor{qid}{空序号}`；整题一个编辑器时是 `answerEditor{qid}`。
+- **textarea 不在 `.edui-editor` 里面**，它和编辑器是兄弟节点（同在 `.textDIV` / `.eidtDiv`），
+  所以 `el.closest('.edui-editor')` 取不到。要往上找 1~4 层容器再取
+  `iframe[id^=ueditor_]`，由 `ueditor_N` 推出实例名 `ueditorInstant` + N，再
+  `UE.instants[key].setContent(html)` + `sync()`。
+- 直接 `textarea.fill()` 只会写隐藏域，编辑器里仍然是空的。
+
+### 4. 最大的坑：不点「暂时保存」等于白填
+
+超星答题页**不会自动暂存**。填完直接关浏览器，刷新后所有作答归零（实测 31 题全空）。
+页面顶部有两个按钮：
+
+| 按钮 | 函数 | 能不能调 |
+|---|---|---|
+| 暂时保存 | `saveWork()` | 能，且必须调，否则作答不落库 |
+| 提交 | `submitValidate()` / `submitWork()` | **永远不调** |
+
+`cx_fill.py` 现在有 `--save`，填完调 `saveWork()`；不加则只在页面上填、刷新即丢。
+
+### 5. 重复执行会把答案点没
+
+新版选项是「点一下切换」：同一个选项点第二次就取消。所以脚本里做了幂等：
+`#answer{qid}` 已经是目标值就跳过，不重复点。

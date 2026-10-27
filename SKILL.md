@@ -72,8 +72,13 @@ python scripts/cxwork.py fill "<答题页 URL>" --probe
 python scripts/cxwork.py fill "<URL>" -a answers.json
 
 # 第三步：真填（确认上一步无误后再加 --commit）
-python scripts/cxwork.py fill "<URL>" -a answers.json --commit
+# --save 会调页面的 saveWork()（暂时保存），不加则只在页面上填、刷新即丢
+python scripts/cxwork.py fill "<URL>" -a answers.json --commit --save
 ```
+
+> ⚠️ **超星答题页不会自动暂存**。不调 `saveWork()`，关掉浏览器后作答全部归零。
+> `--save` 走的是「暂时保存」，不是「提交」；提交按钮（`submitValidate`/`submitWork`）
+> 永远不碰。页面结构细节见 `references/troubleshooting.md` 第七节。
 
 答案文件格式：
 

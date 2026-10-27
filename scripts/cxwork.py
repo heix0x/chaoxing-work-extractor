@@ -29,12 +29,20 @@ PROFILE_DIR = Path(
 )
 DEFAULT_OUT = Path.cwd() / ".cxwork"
 
+# 登录态旁路存档。Chromium 只把带过期时间的 cookie 写进 profile 的 SQLite，
+# 超星的 _uid/UID/uf 是会话 cookie（expires=-1），关浏览器就没了 ——
+# 表现为 login 报成功、下一次 check 又变成未登录。所以额外存一份 storage_state。
+STATE_FILE = PROFILE_DIR / "state.json"
+
 # 浏览器优先级。别人机器上可能只有 Chrome，所以不能写死 Edge。
 # 可以用环境变量 CXWORK_BROWSER 强指定，例如 CXWORK_BROWSER=chrome
 BROWSER_ORDER = ("msedge", "chrome", "chromium")
 
-# 超星登录后必然存在的 cookie，用来判断登录态
+# 超星登录后必然存在的 cookie，用来判断登录态。
+# ⚠️ fid 只是学校编号（如 1415），未登录时也有，不能单独作为登录依据。
 AUTH_COOKIES = ("_uid", "UID", "uf", "fid")
+# 真正代表"已登录"的强凭证，必须命中至少一个
+STRONG_COOKIES = ("_uid", "UID", "uf")
 
 # 登录页特征
 LOGIN_URL_HINTS = ("passport2", "/login", "passport.chaoxing.com")
@@ -98,9 +106,14 @@ class Session:
 
         self.ctx.set_default_timeout(30_000)
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
+        self.load_state()
         return self
 
     def __exit__(self, *exc):
+        try:
+            self.save_state()
+        except Exception:
+            pass
         try:
             if self.ctx:
                 self.ctx.close()
@@ -108,6 +121,30 @@ class Session:
             if self._pw:
                 self._pw.stop()
         return False
+
+    # -- 登录态存档 ----------------------------------------------
+
+    def save_state(self):
+        """把当前 cookie 存成 storage_state，补 profile 不落盘会话 cookie 的坑。"""
+        if self.ctx is None:
+            return
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self.ctx.storage_state(path=str(STATE_FILE))
+
+    def load_state(self):
+        """启动时把上次存的 cookie 灌回去。"""
+        if self.ctx is None or not STATE_FILE.exists():
+            return
+        try:
+            st = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        cookies = st.get("cookies") or []
+        if cookies:
+            try:
+                self.ctx.add_cookies(cookies)
+            except Exception as e:
+                eprint(f"[warn] 恢复登录态失败：{e}")
 
     # -- 登录态 --------------------------------------------------
 
@@ -119,7 +156,7 @@ class Session:
         return out
 
     def is_logged_in(self) -> bool:
-        return bool(self.auth_cookies())
+        return any(k in self.auth_cookies() for k in STRONG_COOKIES)
 
     def goto(self, url: str, wait_selector: str | None = None, timeout: int = 45_000):
         """打开页面并尽量等到内容渲染完。"""
@@ -169,6 +206,7 @@ def cmd_login(args):
         while time.time() < deadline:
             if s.is_logged_in():
                 cookies = s.auth_cookies()
+                s.save_state()
                 eprint(f"\n[ok] 登录态已保存，关键 cookie：{', '.join(cookies)}")
                 eprint(f"[ok] profile 目录：{PROFILE_DIR}")
                 print(json.dumps({"logged_in": True, "cookies": list(cookies)}, ensure_ascii=False))
