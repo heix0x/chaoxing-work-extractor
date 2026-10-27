@@ -19,6 +19,10 @@ clone 到你的 skills 目录，然后读一下它的 SKILL.md
 
 助手会自己完成克隆、装依赖、探测浏览器、跑自检。你只需要在它弹出浏览器时登录一次学习通。
 
+没装 git 的话，直接下载解压也可以：
+
+https://github.com/heix0x/chaoxing-work-extractor/releases/latest
+
 ### 之后每次这样说
 
 **抓题目**
