@@ -80,6 +80,10 @@ python scripts/cxwork.py fill "<URL>" -a answers.json --commit --save
 > `--save` 走的是「暂时保存」，不是「提交」；提交按钮（`submitValidate`/`submitWork`）
 > 永远不碰。页面结构细节见 `references/troubleshooting.md` 第七节。
 
+> ⚠️ **填完必须在回复里明确告诉用户：按 `Ctrl+F5` 强制刷新页面，答案才会显示出来。**
+> 超星只在页面加载时读一次作答数据，填完不刷新页面是空的。用户看到空页面会以为没填上。
+> 这句话必须写进回复正文，不能只放在文档里。
+
 答案文件格式：
 
 ```json

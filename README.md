@@ -48,6 +48,10 @@ https://github.com/heix0x/chaoxing-work-extractor/releases/latest
 
 答案文件放在手边就行，助手会问你路径。
 
+**填完按 `Ctrl+F5` 刷新页面，答案才会显示出来。**
+
+超星只在页面加载时读一次作答数据，填完不刷新，页面就是空的——**那不是没填上，是页面没重新读**。数据已经存到服务端了。
+
 **查登录还在不在**
 
 ```
@@ -66,10 +70,11 @@ https://github.com/heix0x/chaoxing-work-extractor/releases/latest
 
 助手会把「解析出多少题、页面标注多少题」告诉你。两个数字对不上就说明没抓全，它会接着查。
 
-### 需要你做的只有两件
+### 需要你做的只有三件
 
 1. **登录一次**（第一次使用时浏览器会弹出来，正常登录即可）
-2. **核对答案后自己点提交**（工具不碰提交按钮）
+2. **填完按 `Ctrl+F5` 刷新页面**，确认答案都进去了
+3. **核对后自己点提交**（工具不碰提交按钮）
 
 其余全部自动。
 
@@ -101,7 +106,7 @@ python scripts/cxwork.py parse <txt>             # 文本 → JSON
 python scripts/cxwork.py render <json> -a ans.json -c "课程" -o x.md
 python scripts/cxwork.py run <url> -c "课程" -o ./out --placeholder
 python scripts/cxwork.py fill <url> --probe      # 探测答题页结构
-python scripts/cxwork.py fill <url> -a ans.json [--commit]
+python scripts/cxwork.py fill <url> -a ans.json --commit --save   # 填完后按 Ctrl+F5 刷新
 ```
 
 `run` 的退出码 3 表示存在警告（通常是没有抓全）。

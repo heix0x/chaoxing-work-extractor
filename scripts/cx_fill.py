@@ -610,7 +610,8 @@ def run(url: str, answers: dict[int, str | list[str]], commit: bool,
             "applied": matched,
             "saved": saved,
             "details": results,
-            "note": "本工具不会点击提交按钮。请自行核对后手动提交。",
+            "note": "填完后按 Ctrl+F5 强制刷新页面，答案才会显示（超星只在页面加载时读一次作答数据）。"
+                    "本工具不会点击提交按钮，请自行核对后手动提交。",
         }
         text = json.dumps(report, ensure_ascii=False, indent=2)
         if out:
