@@ -1,6 +1,6 @@
 ---
 name: chaoxing-work-extractor
-description: 从超星学习通（mooc1.chaoxing.com）的作业/考试页面提取全部题目，解析成结构化 JSON，再渲染成 Obsidian 风格的 Markdown 笔记。Use when: 学习通作业, 超星作业, 抓题目, 作业转笔记, 导出题目, 把作业整理进笔记, chaoxing work extract。
+description: 从超星学习通（mooc1.chaoxing.com）的作业/考试页面提取全部题目，整理成 Markdown 笔记与结构化 JSON；也支持把答案批量填回答题页。Use when: 学习通作业, 超星作业, 抓题目, 作业转笔记, 导出题目, 把作业整理进笔记, 填写答题页, 把答案填进去, 填答案, chaoxing work extract。
 ---
 
 # 超星作业抓取
