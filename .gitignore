@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 工具产物（随时可重建）
+dist/
+.cxwork/
+out/
+.smoke-profile/
+
+# 抓取结果：绝不提交真实页面内容
+*.meta.json
+
+# 系统
+.DS_Store
+Thumbs.db

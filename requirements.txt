@@ -1,0 +1,5 @@
+# 主通道：驱动独立浏览器读 DOM
+playwright>=1.40
+
+# 兜底通道：操作已打开的浏览器（仅 Windows 需要）
+uiautomation>=2.0.0 ; platform_system == "Windows"
