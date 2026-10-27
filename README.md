@@ -1,5 +1,7 @@
 # 超星作业抓取工具
 
+**English:** Scrape Chaoxing (XueXiTong) assignment pages into Markdown notes, and bulk-fill answers back — a Playwright-based AI agent skill.
+
 把学习通（超星）作业页的题目抓下来，整理成笔记；也能把答案批量填回答题页。
 
 ---
