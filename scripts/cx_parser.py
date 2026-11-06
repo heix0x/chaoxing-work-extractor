@@ -60,8 +60,11 @@ RE_META = re.compile(
     r"(?:.*?作答时间\s*[:：]\s*(?P<win>.+))?"
 )
 
-# 尾部的答题卡（"一. 单选题（37分）\n12345678910"），要整段丢弃
-RE_CARD_DIGITS = re.compile(r"^\s*\d{5,}\s*$")
+# 尾部的答题卡（"一. 单选题（37分）\n12345678910..."），要整段丢弃。
+# 判据收紧到 8 位以上：5 位的纯数字经常是数值型选项（矩阵连乘次数 18000、
+# 年份、端口号），把它们当答题卡会把后面所有题目整段丢掉（实测第 3 章练习题
+# 曾因此只解析出 14/54 题）。
+RE_CARD_DIGITS = re.compile(r"^\s*\d{8,}\s*$")
 
 # 页面装饰性文字，不算题干
 NOISE_LINES = {"暂时保存", "提交", "作业", "暂时保存提交作业"}
@@ -166,8 +169,9 @@ def parse_work_text(text: str) -> dict[str, Any]:
             if so_far >= meta_total:
                 break
 
-        # 兜底：页面没给总题数时，靠"纯数字串"识别答题卡入口
-        if RE_CARD_DIGITS.match(line):
+        # 兜底：页面没给总题数时，靠"连成一串的题号"识别答题卡入口。
+        # 选项上下文里的数字一律是选项内容，绝不能在这里截断。
+        if RE_CARD_DIGITS.match(line) and state != "options":
             flush_question()
             pending_card = True
             continue

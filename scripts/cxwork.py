@@ -11,7 +11,13 @@
     python cxwork.py fetch <url> -o out/    # 抓一个作业页
     python cxwork.py run <url> -c 课程       # 一条龙：抓 → 解析 → 渲染
     python cxwork.py fill <url> --probe     # 探测答题页结构
-    python cxwork.py fill <url> -a ans.json --commit   # 填答案
+    python cxwork.py fill <url> -a ans.json            # 演练（不动页面）
+    python cxwork.py fill <url> -a ans.json --commit --save   # 真填 + 暂时保存（不提交）
+    python cxwork.py verify <url> -o 核对.json         # 重载页面逐题核对作答
+    python cxwork.py formula <url> -o 题目.json        # 单独导出含公式的逐题 JSON
+
+⚠️ --save 必须加：超星答题页不会自动暂存，不加则刷新后作答全部归零。
+   本工具从不点击「提交」按钮（那是 submitValidate / submitWork）。
 """
 from __future__ import annotations
 
@@ -177,17 +183,26 @@ class Session:
 # ---------------------------------------------------------------- 抓取
 
 def extract_page(page) -> dict:
-    """从一个已加载的页面抽三样东西：URL、纯文本、HTML。
+    """从已加载的页面抽 URL、纯文本、HTML。
 
-    纯文本给解析器用，HTML 留作坏样本排查。
+    超星把公式渲染成 `img.ans-latex-moudle`，`inner_text` 拿不到图片内容，
+    题干与选项里的公式会整段消失（表现为选项只剩 A/B/C/D 字母）。
+    这里先就地替换成文本节点再取文本，让产出的 .txt 天然含公式。
+    只改浏览器内的临时 DOM，不向服务器写任何东西。
     """
-    text = page.inner_text("body")
-    html = page.content()
+    from cx_formula import replace_formula_images
+
+    html = page.content()          # 留原始 HTML 作坏样本排查（替换之前取）
+    raw = page.inner_text("body")
+    n_formula = replace_formula_images(page)
+    text = page.inner_text("body") if n_formula else raw
     return {
         "url": page.url,
         "title": page.title(),
-        "text": text,
+        "text": text,             # 含公式，给解析器用
+        "text_raw": raw,          # 原始纯文本，留作对照
         "html": html,
+        "formula_images": n_formula,
         "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
@@ -254,18 +269,28 @@ def cmd_fetch(args):
 
     txt_path.write_text(data["text"], encoding="utf-8")
     html_path.write_text(data["html"], encoding="utf-8")
+    raw_path = out_dir / f"{stem}.raw.txt"
+    if data.get("formula_images"):
+        raw_path.write_text(data["text_raw"], encoding="utf-8")
     meta_path.write_text(
-        json.dumps({k: v for k, v in data.items() if k != "html"}, ensure_ascii=False, indent=2),
+        json.dumps({k: v for k, v in data.items() if k not in ("html", "text_raw")},
+                   ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
-    print(json.dumps({
+    n = data.get("formula_images", 0)
+    report = {
         "ok": True,
         "text": str(txt_path),
         "html": str(html_path),
         "meta": str(meta_path),
         "chars": len(data["text"]),
-    }, ensure_ascii=False, indent=2))
+        "formula_images": n,
+    }
+    if n:
+        report["note"] = (f"检测到 {n} 个公式图片，已还原进 .txt（形如 {{O(mn)}}）；"
+                          f"原始纯文本备份在 {raw_path.name}。")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -352,6 +377,7 @@ def cmd_run(args):
         "raw_text": str(out_dir / f"{stem}.txt"),
         "json": str(jp),
         "markdown": str(mp),
+        "formula_images": page_data.get("formula_images", 0),
         "warnings": parsed.get("warnings", []),
     }, ensure_ascii=False, indent=2))
     return 0 if not parsed.get("warnings") else 3
@@ -373,7 +399,25 @@ def cmd_fill(args):
     if not answers:
         eprint("[!!] 答案文件是空的。")
         return 2
-    return run(args.url, answers, args.commit, args.headful, args.out)
+    return run(args.url, answers, args.commit, args.headful, args.out,
+               save=getattr(args, "save", False))
+
+
+# ---------------------------------------------------------------- 核对
+
+def cmd_verify(args):
+    from cx_verify import verify
+    return verify(args.url, args.out, args.headful)
+
+
+def cmd_formula(args):
+    from cx_formula import main as formula_main
+    argv = [args.url]
+    if args.out:
+        argv += ["-o", args.out]
+    if args.text:
+        argv += ["--text"]
+    return formula_main(argv)
 
 
 # ---------------------------------------------------------------- CLI
@@ -424,11 +468,30 @@ def main(argv=None):
     sp.add_argument("-a", "--answers", help="答案 JSON")
     sp.add_argument("--probe", action="store_true", help="只探测页面结构，能匹配上几题")
     sp.add_argument("--commit", action="store_true", help="真的填进去（不加只演练）")
+    sp.add_argument("--save", action="store_true",
+                    help="填完调页面的 saveWork() 做『暂时保存』（不是提交）；不加则刷新即丢")
     sp.add_argument("--headful", action="store_true", help="显示浏览器窗口")
     sp.add_argument("-o", "--out", help="报告输出路径")
     sp.set_defaults(func=cmd_fill)
 
+    sp = sub.add_parser("verify", help="重新加载答题页，逐题核对已保存的作答")
+    sp.add_argument("url")
+    sp.add_argument("-o", "--out", help="核对报告 JSON 路径")
+    sp.add_argument("--headful", action="store_true")
+    sp.set_defaults(func=cmd_verify)
+
+    sp = sub.add_parser("formula", help="单独导出含公式的逐题题干+选项 JSON")
+    sp.add_argument("url")
+    sp.add_argument("-o", "--out", help="输出 JSON 路径")
+    sp.add_argument("--text", action="store_true", help="同时打印可读文本")
+    sp.set_defaults(func=cmd_formula)
+
     args = p.parse_args(argv)
+
+    # --help 在 parse_args 阶段就退出了，所以这里只拦真正要开浏览器的命令
+    from cx_deps import ensure_deps
+    if not ensure_deps():
+        return 2
     return args.func(args)
 
 

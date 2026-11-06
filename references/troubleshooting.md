@@ -175,3 +175,82 @@ Chromium 的持久化 profile **只把带过期时间的 cookie 写盘**，超�
 
 新版选项是「点一下切换」：同一个选项点第二次就取消。所以脚本里做了幂等：
 `#answer{qid}` 已经是目标值就跳过，不重复点。
+
+---
+
+## 八、题干里的公式是图片（2026-11-06 实测）
+
+**症状**：`fetch` 出来的 `.txt` 里，某些题的选项只有 A/B/C/D 字母、后面是空的；
+或「矩阵链 ____，最优乘法顺序…」这类关键数据整段消失，题目根本没法算。
+
+**原因**：超星把 LaTeX 公式渲染成图片，但 `data` 属性里存着公式源码：
+
+```html
+<img class="ans-latex-moudle" data="%22O(mn)%22" src="https://p.ananas.chaoxing.com/...png">
+```
+
+`inner_text("body")` 拿不到图片内容；而 `data` 常被 URL 编码**两三层**，
+`%D7` 是 GBK 的 `×`，直接 `decodeURIComponent` 会抛异常解出乱码。
+
+**已修（2026-11-06 二次修复）**：`scripts/cx_formula.py` 提供 `replace_formula_images(page)`，
+`fetch` / `run` 的 `extract_page()` 会**自动调用**它——先把公式图片替换成文本节点，
+再取 `inner_text`，所以主 `.txt` 天然含公式（形如 `{O(mn)}`），原始文本另存 `*.raw.txt`，
+输出 JSON 里的 `formula_images` 给出还原数量。不用再手动跑任何命令。
+
+需要逐题的题干+选项 JSON 时才单独跑：
+
+```bash
+python scripts/cxwork.py formula "<作业页URL>" -o 题目.json
+```
+
+只改浏览器内的临时 DOM，不向服务器写任何东西，不碰提交按钮。
+
+**另外两个小坑**：
+
+- `answerId=0`（还没生成答案记录）不影响填入，也不影响 `saveWork()`；
+  保存后继续用原 URL 仍能完整读回作答，不用去找新的 answerId。
+- `cxwork.py fill` 之前没有 `--save`，与 `SKILL.md` 里的示例不一致，
+  会导致「填完刷新全空」。已给 CLI 补上 `--save` 并转发给 `cx_fill.run(save=...)`。
+
+---
+
+## 九、解析题数卡在半路：数值型选项被当成答题卡（2026-11-06 实测）
+
+**症状**：`parse` 只解出 14 题，页面标注 54 题，`warnings` 说「单选题：解析 14 题，标注 25 题」，
+而且判断题、简答题一题都没有。换成未还原公式的 `.raw.txt` 结果一样（说明与公式无关）。
+
+**原因**：第 14 题的四个选项是 `18000 / 12000 / 10000 / 16000`——都是 5 位纯数字。
+旧 `RE_CARD_DIGITS = r"^\s*\d{5,}\s*$"` 本意是识别答题卡里连成一串的题号，
+结果把这行数值选项判成答题卡入口，置 `pending_card = True` 后**后面所有行无条件丢弃**，
+`flush_question()` 也再没机会执行，于是「卡在第 14 题」。
+
+**已修**：
+
+1. 判据收紧到 `\d{8,}`（真正的题号串通常很长，5 位数字太常见）。
+2. 即使命中，只要 `state == "options"`（正处于选项上下文）也一律放行，
+   让数字走「追加到上一个选项」的分支。
+3. `tests/test_cli.py::TestParserRegression` 留了两条回归：
+   内联的数值选项样本 + 真实整卷 54 题样本。
+
+**排查口诀**：题数不是「少几题」而是「从某一题往后整段消失」，
+优先怀疑正文里有没有哪一行触发了提前 `break` / `pending_card`，
+而不是先去改题干正则。
+
+---
+
+## 十、为什么每次用都要重新摸索：环境、三态与零测试（2026-11-06 复盘）
+
+一次 54 题的作业耗时约 35 分钟，其中约 10–15 分钟花在本可避免的重复摸索上：
+
+| 现象 | 根因 | 已修 |
+| --- | --- | --- |
+| 第一条命令就抛裸 `ModuleNotFoundError: playwright` | 管理型 Python 升级（3.13.12→3.13.14）会清空 site-packages；没有任何命令做依赖自检，`install.py` 只能手动跑 | `scripts/cx_deps.py`，`cxwork.py` / `cx_fill.py` 入口自动检测，缺失就 pip 安装一次（`CXWORK_NO_AUTOINSTALL=1` 可关） |
+| 照 SKILL.md 跑 `fill --commit --save` 报参数错 / 填完刷新全空 | `50faf06` 只给 `cx_fill.py` 加了 `--save`，`cxwork.py` 的 argparse 漏了；**修复留在工作区没 commit** | 两个入口都有 `--save`；`tests/test_cli.py` 逐条读 SKILL.md / README.md 核参数 |
+| 抓到的题目缺公式，得自己写脚本还原 | `fetch` 只取 `inner_text` | 第八节，已自动化 |
+| 解析题数 14/54 | 第九节 | 已修 + 回归测试 |
+| 填完不敢确定有没有存住 | 没有重载核对命令，只能临时写 `cx_verify.py` | `cxwork.py verify` |
+
+**三态不一致是总根源**：`git HEAD`、`dist/*.zip`、工作区三份代码行为不同。
+改完代码不 commit、不重打包，下次从仓库 clone 或拿 zip 的人（或换一个会话的助手）
+拿到的还是旧版本，于是同样的坑再踩一遍。
+现在 `install.py` 会跑 CLI 冒烟测试，SKILL.md 末尾写明「改完记得 commit + 重打包」。

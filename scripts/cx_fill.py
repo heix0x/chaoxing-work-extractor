@@ -3,9 +3,16 @@
 
 答案由使用者提供，本脚本不生成内容，也不包含提交动作。
 
-两步走：
-    python cx_fill.py probe <url>            # 先看页面能识别出几道题
-    python cx_fill.py fill <url> -a ans.json --commit   # 确认无误后再真填
+推荐入口是 `cxwork.py fill`（SKILL.md 里的示例用的就是它），本文件也可单独运行。
+
+两步走（两种入口参数一致）：
+    python cxwork.py fill <url> --probe
+    python cxwork.py fill <url> -a ans.json
+    python cxwork.py fill <url> -a ans.json --commit --save
+
+    # 等价的本文件写法
+    python cx_fill.py probe <url>
+    python cx_fill.py fill <url> -a ans.json --commit --save
 
 答案文件格式（键是题号）：
     {
@@ -632,7 +639,9 @@ def main(argv=None):
 
     p = sub.add_parser("fill", help="实际填写（默认 dry-run）")
     p.add_argument("url")
-    p.add_argument("-a", "--answers", required=True, help="答案 JSON")
+    p.add_argument("-a", "--answers", help="答案 JSON（--probe 时可不填）")
+    p.add_argument("--probe", action="store_true",
+                   help="只探测页面结构，等价于 probe 子命令")
     p.add_argument("--commit", action="store_true", help="真的填进去，不加只演练")
     p.add_argument("--save", action="store_true",
                    help="填完调 saveWork() 做『暂时保存』（不是提交）。不加则只在页面上填，刷新即丢")
@@ -641,8 +650,16 @@ def main(argv=None):
 
     a = ap.parse_args(argv)
 
-    if a.cmd == "probe":
+    # 直接跑本文件时也要做依赖自检（--help 在 parse_args 已提前退出）
+    from cx_deps import ensure_deps
+    if not ensure_deps():
+        return 2
+
+    # 与 cxwork.py fill 保持同一套参数：probe 既能用子命令，也能用 --probe 开关
+    if a.cmd == "probe" or getattr(a, "probe", False):
         return run(a.url, {}, False, a.headful, a.out, probe=True)
+    if not a.answers:
+        ap.error("需要 -a answers.json；只想看页面结构就加 --probe")
     answers = load_answers(a.answers)
     return run(a.url, answers, a.commit, a.headful, a.out, save=getattr(a, "save", False))
 

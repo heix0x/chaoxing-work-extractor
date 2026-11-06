@@ -13,6 +13,12 @@ description: 从超星学习通（mooc1.chaoxing.com）的作业/考试页面提
 
 **不适合**：题目是图片、需要富文本编辑器才能看全的、或者页面在 iframe 里跨域加载不出来。这些情况先跑 `fetch` 看一眼 `.txt`，里面没有题干就换方案。
 
+> ✅ **公式是图片照样能抓**。`fetch` / `run` 会自动识别 `img.ans-latex-moudle`
+> （`data` 属性存着 URL 编码的 LaTeX），把公式还原成 `{O(mn)}` 这样的内联文本再写进 `.txt`，
+> 并额外备份一份原始纯文本 `*.raw.txt`，输出的 `formula_images` 字段给出还原数量。
+> 需要逐题的题干+选项 JSON 时再跑 `python scripts/cxwork.py formula "<URL>" -o 题目.json`。
+> 详见 `references/troubleshooting.md` 第八节。
+
 ## 首次准备（只做一次）
 
 ```bash
@@ -37,12 +43,20 @@ python scripts/cxwork.py check      # 确认登录态已保存
 python scripts/cxwork.py run "<作业页 URL>" -c "Linux 操作系统" -o ./out --placeholder
 
 # 分步
-python scripts/cxwork.py fetch "<URL>" -o ./out      # → .txt / .html / .meta.json
+python scripts/cxwork.py fetch "<URL>" -o ./out      # → .txt / .html / .meta.json（公式自动还原）
 python scripts/cxwork.py parse ./out/作业一.txt       # → .json
 python scripts/cxwork.py render ./out/作业一.json -c "课程名" -o 笔记.md -a answers.json
+
+# 逐题题干+选项（含公式），人工解题时好用
+python scripts/cxwork.py formula "<URL>" -o ./out/题目.json
+
+# 填完答案后，重新加载页面逐题核对是否真的存住
+python scripts/cxwork.py verify "<URL>" -o ./out/核对.json
 ```
 
-`run` 的输出是 JSON，关键字段：`questions`（解析到的题数）、`declared`（页面标注的题数）、`warnings`（两者对不上时会说明）。
+`fetch` / `run` 的输出是 JSON，关键字段：`questions` / `declared`（解析数与页面标注数）、
+`warnings`（两者对不上时会说明）、`formula_images`（还原的公式图片数量）。
+**`verify` 的 `filled` 必须等于 `questions`** 才算真的保存成功。
 
 **退出码 3 表示有 warning**，通常是没抓全，别直接往下走。
 
@@ -74,6 +88,9 @@ python scripts/cxwork.py fill "<URL>" -a answers.json
 # 第三步：真填（确认上一步无误后再加 --commit）
 # --save 会调页面的 saveWork()（暂时保存），不加则只在页面上填、刷新即丢
 python scripts/cxwork.py fill "<URL>" -a answers.json --commit --save
+
+# 第四步：重载核对（必做，别靠"填的时候看着有"）
+python scripts/cxwork.py verify "<URL>" -o 核对.json
 ```
 
 > ⚠️ **超星答题页不会自动暂存**。不调 `saveWork()`，关掉浏览器后作答全部归零。
@@ -103,10 +120,11 @@ python scripts/cxwork.py fill "<URL>" -a answers.json --commit --save
 
 **实现约束（后续改代码时保持）**：
 
-- 代码中不包含提交按钮的选择器，也不要添加
-- 不加 `--commit` 一律 dry-run
-- 填完输出核对表，由用户核对后自行提交
-- 超星的作答是即选即存，填入会触发页面自身的暂存请求；回复时要说明这一点，避免用户误以为已提交
+- 代码中不包含提交按钮的选择器，也不要添加（`submitValidate` / `submitWork` 一律不碰）
+- 不加 `--commit` 一律 dry-run；不加 `--save` 则作答不落库
+- 填完用 `verify` 重载核对，再由用户核对后自行提交
+- **超星不会自动暂存**：必须显式 `--save` 调 `saveWork()`，否则刷新即丢。
+  「暂时保存」不是提交，回复里要说清这个区别，避免用户误以为已提交
 
 **页面结构未知时**：先跑 `--probe`。如果 `slots_found` 是 0，说明 `BLOCK_SELECTORS` 里的选择器全没命中，
 加 `--headful` 看着浏览器跑一遍，把真实容器的 class 补进 `BLOCK_SELECTORS`。
@@ -115,7 +133,7 @@ python scripts/cxwork.py fill "<URL>" -a answers.json --commit --save
 
 - **解析器只吃纯文本**，不依赖 HTML 结构。超星改版频繁，DOM 选择器一改就废，纯文本正则更耐操。
 - **题型分组用加粗行，题目用 `##`**。这是用户明确的排版要求：大纲里展开一级就是全部题目。
-- **答题卡的识别靠「重名章节 + 标题里没有共 N 题」**，不靠数字串。超星答题卡里的「一、单选题（37分）」和正文标题长得几乎一样。
+- **答题卡主要靠「重名章节 + 标题里没有共 N 题」**，超星答题卡里的「一、单选题（37分）」和正文标题长得几乎一样。数字串只作 8 位以上的兜底，且选项上下文里的数字必须放行——`18000` 这类数值选项曾被误判成答题卡，把后面 40 题全丢了。
 
 ## 失败怎么退
 
@@ -123,7 +141,7 @@ python scripts/cxwork.py fill "<URL>" -a answers.json --commit --save
 
 1. **`check` 说没登录** → 重跑 `login`。登录态过期是最高频的失败。
 2. **`fetch` 出来的 txt 没有题干** → 页面结构变了或有 iframe。加 `--headful` 看着浏览器跑一遍，看内容到底渲染在哪。
-3. **解析出的题数和标注对不上** → 看 `warnings` 点名了哪个章节。多半是该章节的题干格式有变体（比如选项和字母在同一行），需要给 `cx_parser.py` 加一条正则。
+3. **解析出的题数和标注对不上** → 看 `warnings` 点名了哪个章节。多半是该章节的题干格式有变体（比如选项和字母在同一行），需要给 `cx_parser.py` 加一条正则。若题数卡在某个题号后突然全断，先查是不是有**数值型选项**触发了答题卡误判（第九节）。
 4. **整条路都不可用** → 退到 `cx_fallback.py`：直接操作**用户已打开的浏览器**，抢前台全选复制。这条路不需要登录态，但会抢焦点、会覆盖剪贴板、只能拿到已渲染的纯文本。详见 `references/troubleshooting.md`。
 
 ## 已知坑
@@ -140,14 +158,30 @@ install.py            # 一键自检 + 装依赖（接手这个包先跑它）
 README.md             # 给人看的说明书
 requirements.txt      # 依赖清单
 pack.py               # 打 zip 分发用
-scripts/cxwork.py     # CLI：login / check / fetch / parse / render / run / fill
+scripts/cxwork.py     # CLI：login/check/fetch/parse/render/run/fill/verify/formula
 scripts/cx_parser.py  # 纯文本 → 结构化 JSON
 scripts/cx_render.py  # JSON → Markdown
 scripts/cx_fill.py    # 把答案填进答题页（默认演练）
+scripts/cx_formula.py # 图片公式还原（fetch/run 自动调用，也可单独跑）
+scripts/cx_verify.py  # 重载页面逐题核对已保存的作答
+scripts/cx_deps.py    # 运行前依赖自检 / 自动安装
 scripts/cx_fallback.py# 兜底：操作已打开的浏览器（仅 Windows）
 references/troubleshooting.md  # 已踩过的坑，出问题先看
+tests/test_cli.py              # CLI / 文档一致性 / 解析器回归测试
 tests/sample_linux.txt         # 回归样本
 ```
+
+## 改这个包之后
+
+`install.py` 的冒烟测试会跑 `tests/test_cli.py`，其中一项会**逐条读 SKILL.md 和 README.md 里的示例命令**去核对 CLI 参数——
+以前出过「文档写了 `fill --save` 但 argparse 没有」这种照做就丢数据的漂移。
+
+```bash
+python install.py                              # 全绿再往下
+python -m unittest discover -s tests -v        # 只跑测试
+```
+
+改完记得 `git commit`，并把 `dist/` 里的 zip 重新打包，否则工作区、仓库 HEAD、分发包三份行为会不一致。
 
 ## 分发
 

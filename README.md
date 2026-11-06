@@ -246,14 +246,18 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 ├── README.md               本文件
 ├── SKILL.md                AI 助手的调用说明
 ├── scripts/
-│   ├── cxwork.py           CLI 主入口
+│   ├── cxwork.py           CLI 主入口（含 verify / formula 子命令）
 │   ├── cx_parser.py        纯文本 → JSON
 │   ├── cx_render.py        JSON → Markdown
 │   ├── cx_fill.py          把答案填进答题页
+│   ├── cx_formula.py       图片公式还原（fetch / run 自动调用）
+│   ├── cx_verify.py        重载页面逐题核对作答
+│   ├── cx_deps.py          运行前依赖自检 / 自动安装
 │   └── cx_fallback.py      兜底：操作已打开的浏览器（仅 Windows）
 ├── references/
 │   └── troubleshooting.md  排错手册
 └── tests/
+    ├── test_cli.py         CLI / 文档一致性 / 解析器回归测试
     ├── sample_linux.txt    回归样本
     └── answers.example.json 答案格式示例
 ```
@@ -262,3 +266,25 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 
 - 浏览器登录态：`~/.workbuddy/browser-profiles/chaoxing`（环境变量 `CXWORK_PROFILE` 可改）
 - 抓取结果：默认当前目录下的 `.cxwork/`
+
+---
+
+## 新增能力速查（2026-11-06）
+
+| 命令 | 作用 |
+| --- | --- |
+| `python scripts/cxwork.py fetch "<URL>" -o ./out` | 抓题，**自动还原图片公式**；输出 `formula_images` 计数，原始文本备份为 `*.raw.txt` |
+| `python scripts/cxwork.py formula "<URL>" -o 题目.json` | 单独导出逐题题干+选项（含公式） |
+| `python scripts/cxwork.py fill "<URL>" -a ans.json --commit --save` | 填答案 + **暂时保存**（不是提交，不加 `--save` 刷新即丢） |
+| `python scripts/cxwork.py verify "<URL>" -o 核对.json` | 重新加载页面逐题核对，`filled` 必须等于 `questions` |
+
+几点容易踩的：
+
+- **填完必须让用户按 `Ctrl+F5` 强刷**。超星只在页面加载时读一次作答数据，
+  不刷新看到的旧页面是空的。
+- 依赖缺失时 CLI 会尝试自动 `pip install`；离线环境可设 `CXWORK_NO_AUTOINSTALL=1`
+  并手动跑 `python install.py`。
+- 改完代码先跑 `python install.py`（内含 `tests/test_cli.py`）或
+  `python -m unittest discover -s tests -v`。测试会逐条核对 SKILL.md / README.md
+  里的示例命令与 CLI 参数，防止「文档教的参数代码里没有」这类漂移。
+- **改完记得 `git commit` 并重新打包 `dist/`**，否则工作区、仓库 HEAD、分发包三份行为不一致。

@@ -136,6 +136,23 @@ def smoke_test(channel: str | None) -> bool:
             import shutil
             shutil.rmtree(HERE / ".smoke-profile", ignore_errors=True)
 
+    # CLI / 文档一致性回归：这个包反复出过「SKILL.md 教的参数，argparse 里没有」
+    # 这类漂移（最严重的一次是 fill --save 缺失，照文档跑会把作答弄丢）。
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "unittest", "discover", "-s", str(HERE / "tests"), "-q"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(HERE), timeout=120,
+        )
+        if r.returncode == 0:
+            ok("CLI 冒烟测试通过（文档命令 / 参数 / 答案格式 / 解析器回归）")
+        else:
+            fail("CLI 冒烟测试失败：")
+            say((r.stdout + r.stderr)[-1200:])
+            return False
+    except Exception as e:
+        warn(f"CLI 冒烟测试跳过：{e}")
+
     return True
 
 

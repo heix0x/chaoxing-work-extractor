@@ -119,8 +119,20 @@ def render(
 
             a = answers.get(str(no)) or answers.get(no)
             if a:
-                ans = (a.get("answer") or "").strip()
-                exp = (a.get("explain") or "").strip()
+                # 两种答案格式都认：紧凑格式 {"1": "B"} / {"5": ["A","C"]}，
+                # 以及带解析的 {"1": {"answer": "B", "explain": "..."}}。
+                if isinstance(a, str):
+                    ans, exp = a.strip(), ""
+                elif isinstance(a, list):
+                    ans, exp = " ｜ ".join(str(x) for x in a), ""
+                elif isinstance(a, dict):
+                    raw_ans = a.get("answer") or ""
+                    if isinstance(raw_ans, list):
+                        raw_ans = " ｜ ".join(str(x) for x in raw_ans)
+                    ans = str(raw_ans).strip()
+                    exp = str(a.get("explain") or "").strip()
+                else:
+                    ans, exp = str(a).strip(), ""
                 if ans:
                     lines.append(f"**答案：{ans}**")
                     lines.append("")
