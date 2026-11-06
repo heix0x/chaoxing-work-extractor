@@ -328,7 +328,7 @@ def cmd_render(args):
     data = json.loads(Path(args.json).read_text(encoding="utf-8"))
     answers = json.loads(Path(args.answers).read_text(encoding="utf-8")) if args.answers else None
 
-    md = render(data, answers, args.course, args.placeholder)
+    md = render(data, answers, args.course, args.placeholder, args.style)
 
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -365,7 +365,7 @@ def cmd_run(args):
     answers = None
     if args.answers:
         answers = json.loads(Path(args.answers).read_text(encoding="utf-8"))
-    md = render(parsed, answers, args.course, args.placeholder)
+    md = render(parsed, answers, args.course, args.placeholder, args.style)
     mp = out_dir / f"{stem}.md"
     mp.write_text(md, encoding="utf-8")
 
@@ -452,6 +452,8 @@ def main(argv=None):
     sp.add_argument("-c", "--course", help="课程名")
     sp.add_argument("-o", "--out", help="输出 Markdown 路径")
     sp.add_argument("--placeholder", action="store_true", help="没答案时留占位")
+    sp.add_argument("--style", choices=["classic", "exam"], default="classic",
+                    help="classic（默认）/ exam（先做题后对答案，见 references/note-format.md）")
     sp.set_defaults(func=cmd_render)
 
     sp = sub.add_parser("run", help="一条龙：抓取 → 解析 → 渲染")
@@ -460,6 +462,8 @@ def main(argv=None):
     sp.add_argument("-a", "--answers", help="答案 JSON")
     sp.add_argument("-c", "--course", help="课程名")
     sp.add_argument("--placeholder", action="store_true", help="没答案时留占位")
+    sp.add_argument("--style", choices=["classic", "exam"], default="classic",
+                    help="classic（默认）/ exam（先做题后对答案，见 references/note-format.md）")
     sp.add_argument("--headful", action="store_true", help="显示浏览器窗口")
     sp.set_defaults(func=cmd_run)
 

@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """结构化题目 JSON + 答案 JSON → Markdown 笔记。
 
-设计约定：
-- 题目原文用 `##`，大纲里展开一级就是全部题目
-- 答案、解析是标题下的普通段落，不占标题层级
-- 题型分组用加粗行，不进大纲
+两种风格（style）：
 
-答案文件是可选的。没有答案时渲染成待填，方便先抓题后补答。
+- `classic`（默认）：题目用 `##`，答案/解析是普通段落，题型分组用加粗行。
+  这是历史行为，保持不变，别破坏已有用法。
+- `exam`：按 `references/note-format.md` 的「先做题、后对答案」范本排版——
+  `######` 题号 + 全选项换行 + 引用块包住解析与答案 + `***` 分隔。
+  需要扩展的答案字段（concept / derivation / option_notes），详见该文档第 8 节。
 
-答案文件格式：
-    {
-      "1":  {"answer": "B", "explain": "…"},
-      "11": {"answer": "命令 / 参数", "explain": "…"}
-    }
-键是题号（字符串），answer 和 explain 都可以省略。
+答案文件可选；没有答案时渲染成待填。键是题号（字符串）。
+紧凑格式 `{"1": "B"}` 与扩展格式 `{"1": {"answer": "B", ...}}` 都认。
 """
 from __future__ import annotations
 
@@ -41,7 +38,7 @@ def _render_options(q: dict) -> list[str]:
     return out
 
 
-def render(
+def _render_classic(
     data: dict,
     answers: dict | None = None,
     course: str | None = None,
@@ -151,6 +148,146 @@ def render(
     return "\n".join(lines).rstrip() + "\n"
 
 
+# ---------------------------------------------------------------- exam 风格
+# 依据 references/note-format.md：题干+全选项在前，解析与答案收进引用块。
+
+JUDGE_WORDS = {"对", "错", "正确", "错误", "true", "false", "√", "×"}
+
+
+def _answer_parts(a):
+    """把任意形态的答案值拆成 (answer, concept, derivation, option_notes, explain)。"""
+    if a is None:
+        return "", "", "", {}, ""
+    if isinstance(a, str):
+        return a.strip(), "", "", {}, ""
+    if isinstance(a, list):
+        return " ｜ ".join(str(x) for x in a), "", "", {}, ""
+    if isinstance(a, dict):
+        raw = a.get("answer") or ""
+        if isinstance(raw, list):
+            raw = " ｜ ".join(str(x) for x in raw)
+        return (
+            str(raw).strip(),
+            str(a.get("concept") or "").strip(),
+            str(a.get("derivation") or "").strip(),
+            a.get("option_notes") or {},
+            str(a.get("explain") or "").strip(),
+        )
+    return str(a).strip(), "", "", {}, ""
+
+
+def _exam_question(q: dict, a, include_placeholder: bool) -> list[str]:
+    no = q["no"]
+    qtype = (q.get("type") or "").strip() or "题目"
+    stem = (q.get("stem") or "").strip()
+    opts = {k: (v or "").strip() for k, v in (q.get("options") or {}).items()}
+    ans, concept, derivation, option_notes, explain = _answer_parts(a)
+
+    out = [f"###### {no}. （{qtype}）{stem}", ""]
+
+    # 简答/操作/案例：没有选项，不套遮挡，直接给完整推导
+    if not opts:
+        if derivation or concept or explain:
+            out += [f"**【解析】** {' '.join(x for x in (concept, derivation, explain) if x)}", ""]
+        if ans:
+            out += [f"**【正确答案】** {ans}", ""]
+        elif include_placeholder:
+            out += ["**【正确答案】** *(待填)*", ""]
+        return out
+
+    for letter in sorted(opts):
+        out.append(f"{letter}. {opts[letter]}  ")   # 行尾两空格 = Markdown 硬换行
+    out.append("")
+
+    is_judge = all(v.lower() in JUDGE_WORDS for v in opts.values())
+    ans_up = ans.upper().replace("｜", "").replace(" ", "")
+    correct = {L for L in opts if L in ans_up} or {L for L, T in opts.items() if T == ans}
+
+    out.append("> **解析**：")
+    if concept:
+        out.append(f"> * **考点**：{concept}")
+    if derivation:
+        out.append(f"> * **推导**：{derivation}")
+    if option_notes:
+        for letter in sorted(opts):
+            note = str(option_notes.get(letter, "")).strip()
+            label = (f"判「{opts[letter]}」" if is_judge else f"{letter}. {opts[letter]}")
+            line = f"> * {label}：{note}"
+            if letter in correct:
+                line = f"> * **{label}**：{note}"
+            out.append(line)
+    elif explain:
+        out.append(f"> * **说明**：{explain}")
+    out.append(">")
+    if ans:
+        out.append(f"> **答案**：**{ans}**")
+    elif include_placeholder:
+        out.append("> **答案**：*(待填)*")
+    return out
+
+
+def _render_exam(
+    data: dict,
+    answers: dict | None = None,
+    course: str | None = None,
+    include_answer_placeholder: bool = False,
+) -> str:
+    answers = answers or {}
+    meta = data.get("meta") or {}
+    sections = data.get("sections") or []
+    total = data.get("parsed_total") or sum(len(s["questions"]) for s in sections)
+    declared = meta.get("total_questions")
+    score = meta.get("total_score")
+    window = meta.get("window")
+
+    title = data.get("title") or "作业"
+    head = f"{course} · {title}" if course else title
+    total_part = f"{declared} 题" if declared else f"{total} 题"
+    score_part = f"{_fmt_score(score)} 分" if score else "— 分"
+
+    lines: list[str] = ["---", f"title: {title}"]
+    if course:
+        lines.append(f"course: {course}")
+    lines += ["type: 作业", "platform: 超星学习通", f"total: {total_part} / {score_part}"]
+    if window:
+        lines.append(f"window: {window}")
+    lines += ["---", "", f"# {head}（{total_part} / {score_part}）", ""]
+
+    desc = [f"题量 **{declared or total}**", f"满分 **{_fmt_score(score)}**"]
+    if window:
+        desc.append(f"作答时间 **{window}**")
+    lines += ["> " + " ｜ ".join(desc), ""]
+    lines += ["> 题目块按「先做题、后对答案」排版：解析与答案收在引用块里；格式依据 `references/note-format.md`。", ""]
+
+    for sec in sections:
+        idx = sec.get("index") or ""
+        name = sec.get("name") or ""
+        cnt = sec.get("count") or len(sec["questions"])
+        sc = _fmt_score(sec.get("score"))
+        lines += [f"### {idx}、{name}（{cnt} 题，{sc} 分）", ""]
+        for q in sec["questions"]:
+            a = answers.get(str(q["no"])) or answers.get(q["no"])
+            lines += _exam_question(q, a, include_answer_placeholder)
+            lines += ["", "***", ""]
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render(
+    data: dict,
+    answers: dict | None = None,
+    course: str | None = None,
+    include_answer_placeholder: bool = False,
+    style: str = "classic",
+) -> str:
+    """按 style 分发。默认 classic 保持历史输出不变。"""
+    if style == "exam":
+        return _render_exam(data, answers, course, include_answer_placeholder)
+    if style != "classic":
+        raise ValueError(f"未知 style: {style}（只支持 classic / exam）")
+    return _render_classic(data, answers, course, include_answer_placeholder)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="题目 JSON → Markdown 笔记")
     ap.add_argument("json", help="parse 出来的结构化 JSON")
@@ -158,12 +295,14 @@ def main(argv=None):
     ap.add_argument("-c", "--course", help="课程名，写进 frontmatter 和标题")
     ap.add_argument("-o", "--out", help="输出 Markdown 路径")
     ap.add_argument("--placeholder", action="store_true", help="没有答案时留占位行")
+    ap.add_argument("--style", choices=["classic", "exam"], default="classic",
+                    help="classic（默认，历史格式）/ exam（先做题后对答案，见 references/note-format.md）")
     a = ap.parse_args(argv)
 
     data = json.loads(Path(a.json).read_text(encoding="utf-8"))
     answers = json.loads(Path(a.answers).read_text(encoding="utf-8")) if a.answers else None
 
-    md = render(data, answers, a.course, a.placeholder)
+    md = render(data, answers, a.course, a.placeholder, a.style)
     if a.out:
         Path(a.out).write_text(md, encoding="utf-8")
         print(f"[ok] {a.out} · {len(md)} 字符", file=sys.stderr)

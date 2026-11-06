@@ -47,6 +47,9 @@ python scripts/cxwork.py fetch "<URL>" -o ./out      # → .txt / .html / .meta.
 python scripts/cxwork.py parse ./out/作业一.txt       # → .json
 python scripts/cxwork.py render ./out/作业一.json -c "课程名" -o 笔记.md -a answers.json
 
+# 整理成「先做题、后对答案」的备考笔记（全选项 + 引用块解析）
+python scripts/cxwork.py render ./out/作业一.json -a answers.json --style exam -o 笔记.md
+
 # 逐题题干+选项（含公式），人工解题时好用
 python scripts/cxwork.py formula "<URL>" -o ./out/题目.json
 
@@ -72,6 +75,25 @@ python scripts/cxwork.py verify "<URL>" -o ./out/核对.json
 ```
 
 键是题号（字符串）。答案由你（模型）逐题做，拿不准的要在 explain 里标出来，不要装确定。
+
+**整理成备考笔记时**用 `--style exam`（`render` 与 `run` 都支持，默认 `classic` 保持旧输出）。
+它按「先做题、后对答案」排版：题干 + 全选项在前，考点定位 / 无选项推导 / 逐选项辨析 /
+答案末行全部收进引用块。为此答案文件可以带扩展字段：
+
+```json
+{
+  "1": {
+    "answer": "B",
+    "concept": "考点定位（一句话）",
+    "derivation": "假设没有选项，怎么一步步推出来",
+    "option_notes": {"A": "错在哪", "B": "正确。为什么对", "C": "…", "D": "…"}
+  }
+}
+```
+
+完整模板、判断题/简答题的处理、库级 frontmatter 的取舍见
+**`references/note-format.md`**（这是笔记格式的唯一依据）。
+旧格式（纯字符串、数组、只有 `answer`+`explain`）照样能渲染，不会崩。
 
 ## 把答案填回答题页
 
@@ -166,8 +188,9 @@ scripts/cx_formula.py # 图片公式还原（fetch/run 自动调用，也可单�
 scripts/cx_verify.py  # 重载页面逐题核对已保存的作答
 scripts/cx_deps.py    # 运行前依赖自检 / 自动安装
 scripts/cx_fallback.py# 兜底：操作已打开的浏览器（仅 Windows）
+references/note-format.md      # 笔记模板规范（exam 风格的唯一依据）
 references/troubleshooting.md  # 已踩过的坑，出问题先看
-tests/test_cli.py              # CLI / 文档一致性 / 解析器回归测试
+tests/test_cli.py              # CLI / 文档一致性 / 解析器回归 / exam 格式测试
 tests/sample_linux.txt         # 回归样本
 ```
 

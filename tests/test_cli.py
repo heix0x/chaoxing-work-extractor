@@ -135,6 +135,82 @@ class TestAnswerFormats(unittest.TestCase):
         self.assertEqual(got[11], "命令 ｜ 参数")
 
 
+class TestExamStyle(unittest.TestCase):
+    """render --style exam：先做题、后对答案的范本格式。"""
+
+    def _data(self):
+        return parse_work_text((ROOT / "tests" / "sample_linux.txt").read_text(encoding="utf-8"))
+
+    def test_exam_full_structure(self):
+        answers = {
+            "1": {
+                "answer": "B",
+                "concept": "考点定位",
+                "derivation": "无选项推导",
+                "option_notes": {"A": "A 错", "B": "正确。B 对", "C": "C 错", "D": "D 错"},
+            }
+        }
+        md = cx_render.render(self._data(), answers, "测试", False, "exam")
+        self.assertIn("###### 1. （单选题）", md)
+        self.assertIn("A. ", md)                      # 全选项
+        self.assertIn("> **解析**：", md)
+        self.assertIn("> * **考点**：考点定位", md)
+        self.assertIn("> * **推导**：无选项推导", md)
+        self.assertIn("> * **B. ", md)                # 正确项加粗
+        self.assertIn("> **答案**：**B**", md)        # 答案在引用块末行
+        self.assertIn("***", md)
+
+    def test_classic_is_unchanged_by_default(self):
+        md = cx_render.render(self._data(), {"1": {"answer": "B", "explain": "因为"}}, "测试", False)
+        self.assertIn("**答案：B**", md)
+        self.assertNotIn("######", md)
+        self.assertNotIn("> **答案**：", md)
+
+    def test_exam_accepts_compact_answer(self):
+        md = cx_render.render(self._data(), {"1": "B"}, "测试", False, "exam")
+        self.assertIn("> **答案**：**B**", md)
+
+    def test_exam_judge_two_sided(self):
+        data = {
+            "meta": {"total_questions": 1}, "parsed_total": 1, "title": "T",
+            "sections": [{
+                "index": "一", "name": "判断题", "count": 1, "score": 10,
+                "questions": [{"no": 1, "type": "判断题", "stem": "某命题",
+                               "options": {"A": "对", "B": "错"}, "blank_count": 0}],
+            }],
+        }
+        md = cx_render.render(
+            data, {"1": {"answer": "B", "option_notes": {"A": "判对会错在…", "B": "命题不成立…"}}},
+            None, False, "exam",
+        )
+        self.assertIn("判「对」", md)
+        self.assertIn("判「错」", md)
+        self.assertIn("> **答案**：**B**", md)
+
+    def test_exam_short_answer_not_quoted(self):
+        data = {
+            "meta": {"total_questions": 1}, "parsed_total": 1, "title": "T",
+            "sections": [{
+                "index": "一", "name": "简答题", "count": 1, "score": 10,
+                "questions": [{"no": 1, "type": "简答题", "stem": "简述…",
+                               "options": {}, "blank_count": 0}],
+            }],
+        }
+        md = cx_render.render(
+            data, {"1": {"answer": "答案文本", "explain": "完整推导"}},
+            None, False, "exam",
+        )
+        self.assertIn("**【正确答案】** 答案文本", md)
+        self.assertIn("完整推导", md)
+        self.assertNotIn("> **答案**：", md)
+
+    def test_style_flag_on_cli(self):
+        for mod, argv in ((cxwork, ["render"]), (cxwork, ["run"])):
+            with self.subTest(mod=mod.__name__, argv=argv):
+                _, out = help_output(mod, argv)
+                self.assertIn("--style", out)
+
+
 class TestParserRegression(unittest.TestCase):
     """数值型选项曾被误判成答题卡，导致后面所有题被整段丢弃。"""
 

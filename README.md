@@ -255,6 +255,7 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 │   ├── cx_deps.py          运行前依赖自检 / 自动安装
 │   └── cx_fallback.py      兜底：操作已打开的浏览器（仅 Windows）
 ├── references/
+│   ├── note-format.md      笔记模板规范（exam 风格的唯一依据）
 │   └── troubleshooting.md  排错手册
 └── tests/
     ├── test_cli.py         CLI / 文档一致性 / 解析器回归测试
@@ -277,6 +278,7 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 | `python scripts/cxwork.py formula "<URL>" -o 题目.json` | 单独导出逐题题干+选项（含公式） |
 | `python scripts/cxwork.py fill "<URL>" -a ans.json --commit --save` | 填答案 + **暂时保存**（不是提交，不加 `--save` 刷新即丢） |
 | `python scripts/cxwork.py verify "<URL>" -o 核对.json` | 重新加载页面逐题核对，`filled` 必须等于 `questions` |
+| `python scripts/cxwork.py render <题目.json> -a answers.json --style exam -o 笔记.md` | 生成「先做题、后对答案」的备考笔记：全选项 + 引用块解析，格式见 `references/note-format.md` |
 
 几点容易踩的：
 
