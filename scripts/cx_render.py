@@ -187,8 +187,16 @@ def _exam_question(q: dict, a, include_placeholder: bool) -> list[str]:
 
     # 简答/操作/案例：没有选项，不套遮挡，直接给完整推导
     if not opts:
-        if derivation or concept or explain:
-            out += [f"**【解析】** {' '.join(x for x in (concept, derivation, explain) if x)}", ""]
+        # 简答题的考点/思路/补充说明各自成段，挤成一行会让多段推导读不出结构
+        blocks = []
+        if concept:
+            blocks.append(f"**【考点】** {concept}")
+        if derivation:
+            blocks.append(f"**【思路】** {derivation}")
+        if explain:
+            blocks.append(explain)
+        if blocks:
+            out += ["\n\n".join(blocks), ""]
         if ans:
             out += [f"**【正确答案】** {ans}", ""]
         elif include_placeholder:

@@ -254,3 +254,28 @@ python scripts/cxwork.py formula "<作业页URL>" -o 题目.json
 改完代码不 commit、不重打包，下次从仓库 clone 或拿 zip 的人（或换一个会话的助手）
 拿到的还是旧版本，于是同样的坑再踩一遍。
 现在 `install.py` 会跑 CLI 冒烟测试，SKILL.md 末尾写明「改完记得 commit + 重打包」。
+
+---
+
+## 十一、「简答题」也能挂多个空，答案会被塞进第一个空（2026-11-23 实测）
+
+**症状**：某题的四个空是四个类名（`DatabaseSource` / `TextSource` / `XMLTransformer` /
+`XLSTransformer`），答案文件写的是四项数组，填完重载核对发现
+`editors = ["DatabaseSource TextSource XMLTransformer XLSTransformer", "", "", ""]`——
+四个值拼成一段挤进第一空，后三空为空。`--commit` 报告却是 `ok: true`、`filled: true`。
+
+**原因**：`probe` 把这类题判成 `type=简答题, kind=text, controls=4`（不是 `blank`）。
+`apply()` 的 `text` 分支只认字符串，`" ".join(ans)` 把数组拼成一段，再交给
+`_fill_text_ue()` 写进 `slot.controls[0]`。判 `ok` 时只看"有没有写进去"，所以不会报错。
+
+**已修**：新增 `_text_values(ans, n_controls)`——答案数组 + 多个控件时按空返回列表，
+走 `_fill_blanks_ue()` 逐个 setContent；单控件时保持原来的拼接行为。
+`tests/test_cli.py` 加了两条（4 空分填 / 单控件合并）。
+
+**怎么提前发现**：`probe` 之后先看目标题的 `controls` 数量。大于 1 的简答题，
+答案必须是等长数组，且填完要用 `verify` 看 `editors` 数组，而不是只看 `filled`。
+`filled=True` 只代表"至少有一个控件非空"。
+
+**顺带**：`cx_render.py` 的简答题解析原来是 `**【解析】** 考点 思路 补充说明` 挤成一行，
+多段推导读不出结构。现在考点、思路、补充说明各自成段（`**【考点】**` / `**【思路】**`），
+选择题输出不变。

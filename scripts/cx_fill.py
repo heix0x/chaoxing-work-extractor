@@ -346,6 +346,19 @@ def _set_ue(page, textarea, text: str) -> bool:
     return ok
 
 
+def _text_values(ans, n_controls: int) -> list[str]:
+    """简答题答案归一化成「每个控件一份内容」。
+
+    超星的「简答题」也能挂多个 UEditor（一个题干挖 4 个空）。这时答案是数组，
+    必须按空分填；只有单控件时才把数组拼成一段，否则四个答案会全挤进第一个空。
+    """
+    if isinstance(ans, list) and n_controls > 1:
+        return [str(v) for v in ans]
+    if isinstance(ans, str):
+        return [ans]
+    return [" ".join(str(v) for v in ans)]
+
+
 def _fill_blanks_ue(page, slot: Slot, values: list[str]) -> int:
     n = 0
     for i, ta in enumerate(slot.controls):
@@ -533,13 +546,20 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
 
     # --- 简答/操作/案例 ---
     if slot.kind == "text":
-        txt = ans if isinstance(ans, str) else " ".join(ans)
+        vals = _text_values(ans, len(slot.controls))
         is_ue = False
         if slot.controls:
             try:
                 is_ue = slot.controls[0].evaluate("el => el.tagName") == "TEXTAREA"
             except Exception:
                 is_ue = False
+        # 一个题干挂多个空（超星「简答题」也能挂 4 个 UEditor）：按空分填
+        if len(vals) > 1:
+            n = _fill_blanks_ue(page, slot, vals) if (commit and is_ue and page is not None) else 0
+            return {"no": slot.no, "ok": (not commit) or n == len(vals),
+                    "why": f"{len(vals)} 空 / 控件 {len(slot.controls)} 个",
+                    "planned": f"填 {vals}"}
+        txt = vals[0]
         if is_ue and page is not None:
             ok = _fill_text_ue(page, slot, txt) if commit else True
         else:

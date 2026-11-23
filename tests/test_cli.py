@@ -134,6 +134,16 @@ class TestAnswerFormats(unittest.TestCase):
         self.assertEqual(got[5], ["A", "C"])
         self.assertEqual(got[11], "命令 ｜ 参数")
 
+    def test_text_values_multi_editor(self):
+        """4 个空的简答题必须按空分填，不能把数组拼成一段塞进第一个空。"""
+        vals = cx_fill._text_values(["A1", "B2", "C3", "D4"], 4)
+        self.assertEqual(vals, ["A1", "B2", "C3", "D4"])
+
+    def test_text_values_single_editor(self):
+        """只有一个编辑器时，数组仍拼成一段（历史行为不变）。"""
+        self.assertEqual(cx_fill._text_values(["命令", "参数"], 1), ["命令 参数"])
+        self.assertEqual(cx_fill._text_values("整段文字", 1), ["整段文字"])
+
 
 class TestExamStyle(unittest.TestCase):
     """render --style exam：先做题、后对答案的范本格式。"""
