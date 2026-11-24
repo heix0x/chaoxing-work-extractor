@@ -14,22 +14,23 @@
 
 ```
 帮我装一个技能：https://github.com/heix0x/chaoxing-work-extractor
-1. 先确认你自己的 skills 目录（WorkBuddy 是 ~/.workbuddy/skills，Windows 即
-   %USERPROFILE%\.workbuddy\skills\；Claude Code 是 ~/.claude/skills；其它助手你自己查），
-   装到那里，目录名保持 chaoxing-work-extractor。
-2. 有 git 就 git clone；没有 git 就下载下面这个 zip 解压，再把 chaoxing-work-extractor-main
-   改回 chaoxing-work-extractor：
-   https://github.com/heix0x/chaoxing-work-extractor/archive/refs/heads/main.zip
-3. 进目录跑 python install.py 自检。缺 Python 自己装，缺 playwright / uiautomation 自己 pip 装，
-   浏览器用本机已装的 Edge 或 Chrome，不要另下浏览器。
-4. 哪一步报错，把原始输出贴给我，不要猜着改，也不要跳过失败项说「应该没问题」。
-5. 装完读一遍 SKILL.md，然后告诉我三件事：装到哪个路径、自检哪几项通过、我下一步做什么。
+装到你自己的 skills 目录（WorkBuddy 是 ~/.workbuddy/skills），目录名保持 chaoxing-work-extractor。
+有 git 就 clone；没有就下这个 zip 解压，再把 chaoxing-work-extractor-main 改回原名：
+https://github.com/heix0x/chaoxing-work-extractor/archive/refs/heads/main.zip
+装完跑 python install.py 自检，缺依赖你自己装，浏览器用本机已有的 Edge 或 Chrome。
+自检到登录那步弹浏览器，我扫码。其它报错你自己处理，不用问我。
+装完告诉我：这个技能叫什么名字、我在对话里怎么调它。
 ```
 
-助手会自己判断目录、装依赖、探测浏览器、跑自检。全绿时最后一段是 `[5/5] 下一步`，照着它给的三条命令做即可。
+装完怎么确认：在对话框点 **+**（有的助手是输入 **/**），列表里能看到 `chaoxing-work-extractor` 就是好了。
+看不到就发这句：
 
-> 助手装不上时手动也一样：到 <https://github.com/heix0x/chaoxing-work-extractor/releases/latest>
-> 下最新的 `chaoxing-work-extractor-*.zip`，解压到上面任一个 skills 目录，进去跑 `python install.py`。
+```
+我在技能列表里看不到 chaoxing-work-extractor，你查一下为什么没被识别，修好后告诉我怎么调它。
+```
+
+> 助手装不上、你想手动来：到 <https://github.com/heix0x/chaoxing-work-extractor/releases/latest>
+> 下最新的 `chaoxing-work-extractor-*.zip`，解压到任一 skills 目录，进去跑 `python install.py`。
 
 ## 用法：跟助手说这几句话
 
