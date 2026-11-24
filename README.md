@@ -6,28 +6,36 @@
 
 ---
 
-## 交给 AI 助手（推荐）
+## 安装
 
-不需要装 Python，不需要打开终端。装一次，之后每次说一句话。
+需要桌面端助手（能读写本地文件、能跑命令）。只会聊天的网页版不行，它碰不到你的电脑。
 
-### 装一次
-
-把这段发给你的 AI 助手（WorkBuddy、Claude Code 等）：
+把下面这段整段复制给助手，WorkBuddy、Claude Code 都一样：
 
 ```
-把 https://github.com/heix0x/chaoxing-work-extractor
-clone 到你的 skills 目录，然后读一下它的 SKILL.md
+帮我装一个技能：https://github.com/heix0x/chaoxing-work-extractor
+1. 先确认你自己的 skills 目录（WorkBuddy 是 ~/.workbuddy/skills，Windows 即
+   %USERPROFILE%\.workbuddy\skills\；Claude Code 是 ~/.claude/skills；其它助手你自己查），
+   装到那里，目录名保持 chaoxing-work-extractor。
+2. 有 git 就 git clone；没有 git 就下载下面这个 zip 解压，再把 chaoxing-work-extractor-main
+   改回 chaoxing-work-extractor：
+   https://github.com/heix0x/chaoxing-work-extractor/archive/refs/heads/main.zip
+3. 进目录跑 python install.py 自检。缺 Python 自己装，缺 playwright / uiautomation 自己 pip 装，
+   浏览器用本机已装的 Edge 或 Chrome，不要另下浏览器。
+4. 哪一步报错，把原始输出贴给我，不要猜着改，也不要跳过失败项说「应该没问题」。
+5. 装完读一遍 SKILL.md，然后告诉我三件事：装到哪个路径、自检哪几项通过、我下一步做什么。
 ```
 
-助手会自己完成克隆、装依赖、探测浏览器、跑自检。你只需要在它弹出浏览器时登录一次学习通。
+助手会自己判断目录、装依赖、探测浏览器、跑自检。全绿时最后一段是 `[5/5] 下一步`，照着它给的三条命令做即可。
 
-没装 git 的话，直接下载解压也可以：
+> 助手装不上时手动也一样：到 <https://github.com/heix0x/chaoxing-work-extractor/releases/latest>
+> 下最新的 `chaoxing-work-extractor-*.zip`，解压到上面任一个 skills 目录，进去跑 `python install.py`。
 
-https://github.com/heix0x/chaoxing-work-extractor/releases/latest
+## 用法：跟助手说这几句话
 
-### 之后每次这样说
+装一次，之后每次说一句话。不需要装 Python，不需要打开终端。
 
-**抓题目**
+### 抓题目
 
 ```
 帮我抓这个作业的题目，整理成笔记：
@@ -41,7 +49,7 @@ https://github.com/heix0x/chaoxing-work-extractor/releases/latest
 <作业页网址>
 ```
 
-**填答案**
+### 填答案
 
 ```
 把这份答案填进去，填完别提交，我要自己核对：
@@ -54,7 +62,7 @@ https://github.com/heix0x/chaoxing-work-extractor/releases/latest
 
 超星只在页面加载时读一次作答数据，填完不刷新，页面就是空的——**那不是没填上，是页面没重新读**。数据已经存到服务端了。
 
-**查登录还在不在**
+### 查登录还在不在
 
 ```
 检查一下超星登录还有效吗
@@ -103,24 +111,31 @@ python scripts/cxwork.py run "<作业页网址>" -c "课程名" -o ./out --place
 ```bash
 python scripts/cxwork.py login [--wait 300]     # 登录，--wait 指定最长等待秒数
 python scripts/cxwork.py check [--headful]       # 检查登录态
-python scripts/cxwork.py fetch <url> -o ./out    # 只抓原始文本
+python scripts/cxwork.py fetch <url> -o ./out    # 只抓原始文本（自动还原图片公式）
+python scripts/cxwork.py formula <url> -o 题目.json   # 逐题题干 + 选项，含公式
 python scripts/cxwork.py parse <txt>             # 文本 → JSON
 python scripts/cxwork.py render <json> -a ans.json -c "课程" -o x.md
+python scripts/cxwork.py render <json> -a ans.json --style exam -o 笔记.md   # 先做题后对答案
 python scripts/cxwork.py run <url> -c "课程" -o ./out --placeholder
 python scripts/cxwork.py fill <url> --probe      # 探测答题页结构
 python scripts/cxwork.py fill <url> -a ans.json --commit --save   # 填完后按 Ctrl+F5 刷新
+python scripts/cxwork.py verify <url> -o 核对.json    # 重载页面逐题核对已填内容
 ```
 
 `run` 的退出码 3 表示存在警告（通常是没有抓全）。
+
+`--style exam` 生成的笔记是「全选项 + 引用块解析」，先做题、后对答案；格式规范见
+`references/note-format.md`。不加 `--style` 时输出保持原样。
 
 ---
 
 ## 功能
 
 - 抓取作业页的**全部题目**：题干、选项、题型、分值、作答时间
-- 输出 `JSON`（机器可读）和 `Markdown`（笔记）
+- **图片形式的公式自动还原**成文字（超星把 LaTeX 渲染成图片，`data` 属性里存着源码）
+- 输出 `JSON`（机器可读）和 `Markdown`（笔记，支持「先做题后对答案」的 exam 风格）
 - 支持单选、多选、填空、判断、简答、操作、案例七种题型
-- 把答案文件的内容批量填回答题页
+- 把答案文件的内容批量填回答题页，填完能重载页面逐题核对
 
 ## 不支持的场景
 
@@ -244,6 +259,7 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 ├── install.py              环境自检与依赖安装
 ├── requirements.txt        依赖清单
 ├── README.md               本文件
+├── CHANGELOG.md            版本记录
 ├── SKILL.md                AI 助手的调用说明
 ├── scripts/
 │   ├── cxwork.py           CLI 主入口（含 verify / formula 子命令）
@@ -270,23 +286,10 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 
 ---
 
-## 新增能力速查（2026-11-06）
+## 维护（改这个仓库时看）
 
-| 命令 | 作用 |
-| --- | --- |
-| `python scripts/cxwork.py fetch "<URL>" -o ./out` | 抓题，**自动还原图片公式**；输出 `formula_images` 计数，原始文本备份为 `*.raw.txt` |
-| `python scripts/cxwork.py formula "<URL>" -o 题目.json` | 单独导出逐题题干+选项（含公式） |
-| `python scripts/cxwork.py fill "<URL>" -a ans.json --commit --save` | 填答案 + **暂时保存**（不是提交，不加 `--save` 刷新即丢） |
-| `python scripts/cxwork.py verify "<URL>" -o 核对.json` | 重新加载页面逐题核对，`filled` 必须等于 `questions` |
-| `python scripts/cxwork.py render <题目.json> -a answers.json --style exam -o 笔记.md` | 生成「先做题、后对答案」的备考笔记：全选项 + 引用块解析，格式见 `references/note-format.md` |
-
-几点容易踩的：
-
-- **填完必须让用户按 `Ctrl+F5` 强刷**。超星只在页面加载时读一次作答数据，
-  不刷新看到的旧页面是空的。
-- 依赖缺失时 CLI 会尝试自动 `pip install`；离线环境可设 `CXWORK_NO_AUTOINSTALL=1`
-  并手动跑 `python install.py`。
-- 改完代码先跑 `python install.py`（内含 `tests/test_cli.py`）或
-  `python -m unittest discover -s tests -v`。测试会逐条核对 SKILL.md / README.md
-  里的示例命令与 CLI 参数，防止「文档教的参数代码里没有」这类漂移。
-- **改完记得 `git commit` 并重新打包 `dist/`**，否则工作区、仓库 HEAD、分发包三份行为不一致。
+- 依赖缺失时 CLI 会尝试自动 `pip install`；离线环境设 `CXWORK_NO_AUTOINSTALL=1`，再手动跑 `python install.py`。
+- 改完代码先跑 `python install.py`（内含 `tests/test_cli.py`）或 `python -m unittest discover -s tests -v`。
+  测试会逐条核对 SKILL.md / README.md 里的示例命令与 CLI 参数，防止「文档教的参数代码里没有」这类漂移。
+- 改完记得 `git commit` 并重新打包 `dist/`（`python pack.py --version x.y.z`），否则工作区、仓库 HEAD、
+  分发包三份行为不一致，别人装到的还是旧代码。
