@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
 import sys
 import unittest
@@ -266,10 +267,15 @@ y
         self.assertFalse(d["warnings"], f"不该有 warning：{d['warnings']}")
 
     def test_real_homework_full_count(self):
-        """若 e2e 抓到的样本存在，用它验证整卷题数（54 题）。"""
-        p = Path(r"C:\Users\31524\WorkBuddy\学科\cx\算法第三章\e2e\作业作答.txt")
-        if not p.exists():
-            self.skipTest("没有 e2e 样本")
+        """若有真实整卷样本，用它验证题数（54 题）。
+
+        样本不进仓库（含作业内容）。用环境变量 CXWORK_SAMPLE 指向任意一份
+        真实抓取的 .txt 即可，未设置或文件不存在则跳过。
+        """
+        raw = os.environ.get("CXWORK_SAMPLE", "")
+        p = Path(raw) if raw else None
+        if not p or not p.exists():
+            self.skipTest("没有 e2e 样本（设 CXWORK_SAMPLE 指向真实抓取结果）")
         d = parse_work_text(p.read_text(encoding="utf-8"))
         self.assertEqual(d["parsed_total"], 54)
         self.assertEqual(d["warnings"], [])
