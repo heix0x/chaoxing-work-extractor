@@ -15,10 +15,12 @@
 ```
 帮我装一个技能：https://github.com/heix0x/chaoxing-work-extractor
 装到你自己的 skills 目录（WorkBuddy 是 ~/.workbuddy/skills），目录名保持 chaoxing-work-extractor。
-有 git 就 clone；没有就下这个 zip 解压，再把 chaoxing-work-extractor-main 改回原名：
+有 git 就 clone；没有就下这个 zip 解压，再把解压出来的 chaoxing-work-extractor-main
+改成 chaoxing-work-extractor：
 https://github.com/heix0x/chaoxing-work-extractor/archive/refs/heads/main.zip
-装完跑 python install.py 自检，缺依赖你自己装，浏览器用本机已有的 Edge 或 Chrome。
-自检到登录那步弹浏览器，我扫码。其它报错你自己处理，不用问我。
+装完跑 python install.py 自检，缺依赖你自己装，浏览器用本机已有的 Edge 或 Chrome；
+报错你自己处理，不用问我。
+只有一件事要我做：自检到登录那步弹浏览器，我扫码。
 装完告诉我：这个技能叫什么名字、我在对话里怎么调它。
 ```
 
@@ -34,7 +36,7 @@ https://github.com/heix0x/chaoxing-work-extractor/archive/refs/heads/main.zip
 
 ## 用法：跟助手说这几句话
 
-装一次，之后每次说一句话。不需要装 Python，不需要打开终端。
+之后每次说一句话就行。
 
 ### 抓题目
 
