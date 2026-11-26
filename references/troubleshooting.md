@@ -279,3 +279,52 @@ python scripts/cxwork.py formula "<作业页URL>" -o 题目.json
 **顺带**：`cx_render.py` 的简答题解析原来是 `**【解析】** 考点 思路 补充说明` 挤成一行，
 多段推导读不出结构。现在考点、思路、补充说明各自成段（`**【考点】**` / `**【思路】**`），
 选择题输出不变。
+
+---
+
+## 十二、登录「成功」但其实是失效的；多选答案点 0 下（2026-11-26 实测）
+
+### 1. `check` 说已登录，`fetch` 抓回来的是登录页
+
+**症状**：`check` 返回 `{"logged_in": true, "cookies": ["fid","_uid","UID","uf"]}`，
+但 `fetch` 产出的文件名是「用户登录.txt」，正文只有 299 字；`login` 也一进循环就报成功、
+根本不等扫码。
+
+**原因**：`_uid`/`uf` 服务端过期后仍留在本地 profile 里，只看 cookie 在不在等于没查。
+更迷惑的是 **`i.chaoxing.com` 的会话和 mooc 域是分开的**：失效时个人空间仍显示用户名，
+而 `mooc1/mooc2-ans` 一律跳 passport。所以「个人空间能打开」不能当登录依据。
+
+**已修**：`Session.probe_session()` 用 `ctx.request.get(PROBE_URL)` 打一次受保护页面，
+最终 URL 落到 `passport2` 即判失效。`check` / `login` 都改用它；
+`fetch` / `run` 打开作业页后若落到登录页，直接报错退出，不再静默产出一个登录页 txt。
+
+**探活地址的坑**：
+
+| 地址 | 结果 |
+| --- | --- |
+| `i.chaoxing.com/base` | ❌ 失效时仍显示个人空间，假阳性 |
+| `mooc2-ans/mycourse/stu` | ❌ 缺 courseid，登录后显示「无效的参数」，看着像失败 |
+| `mooc1.chaoxing.com/visit/interaction` | ✅ 失效跳 passport，有效是正常页面 |
+
+**另一个坑**：`login` 里别用「页面还在登录页就不探活」来省开销——扫码后页面不一定立刻跳走，
+会一直等到超时。用 `ctx.request` 探活是纯 HTTP，不开标签页、不干扰用户窗口，可以每 3 秒打一次。
+
+### 2. 多选题全部填不上，报告只说 `ok: false` / `readback: ""`
+
+**症状**：35 题的卷子里，单选、填空、简答都进去了，5 道多选全是空；`--commit` 报告
+`applied 30/35`，失败项只有 `planned: 多选 ABD` 和空的 `readback`，没有原因。
+
+**原因**：答案文件里多选写成紧凑字符串 `"ABD"`，而 `apply()` 只按 `[,，\s]+` 切分，
+`"ABD"` 没分隔符 → 被当成**一个字母**去匹配选项 → 一个都没点中 → `done=0`。
+`done==len(picks)` 恒假，但报告没把 `done` 打出来，所以看不出是「没找到选项」还是「点了没生效」。
+
+**已修**：
+
+1. 新增 `_multi_picks()`：`["A","C"]`、`"A,C,D"`、`"ACD"` 三种写法都拆成字母列表；
+   长度 1 的字母（`"B"`）保持原样，不会被拆坏。`choice_multi` 与老版 `checkbox` 共用。
+2. `_click_choice()` 优先点内层 `span.num_option_dx`。实测内外层都能触发点击事件，
+   内层是页面真正绑事件的那个元素，更稳。
+3. `tests/test_cli.py::TestMultiPicks` 四条回归（紧凑串 / 带分隔符 / 数组 / 单字母）。
+
+**排查口诀**：多选失败先看答案格式，再看点击目标，最后才怀疑页面改版。
+`ok: false` 且 `readback` 为空，八成是「压根没点」，不是「点了没存」。

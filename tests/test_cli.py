@@ -73,6 +73,27 @@ class TestDocCliDrift(unittest.TestCase):
                                   f"README.md 在 `{sub}` 用了 {flag}，但 CLI 里没有")
 
 
+class TestMultiPicks(unittest.TestCase):
+    """多选答案的三种写法都要认，否则整题点了 0 下还报「失败」不给原因。"""
+
+    def test_compact_string(self):
+        # "ACD" 曾被当成一个字母去找选项 → done=0、回读空（2026-11-26 实测）
+        self.assertEqual(cx_fill._multi_picks("ACD"), ["A", "C", "D"])
+
+    def test_separated_string(self):
+        self.assertEqual(cx_fill._multi_picks("A,C,D"), ["A", "C", "D"])
+        self.assertEqual(cx_fill._multi_picks("A、C、D"), ["A", "C", "D"])
+
+    def test_list_forms(self):
+        self.assertEqual(cx_fill._multi_picks(["A", "C"]), ["A", "C"])
+        self.assertEqual(cx_fill._multi_picks(["AC"]), ["A", "C"])
+
+    def test_single_letter(self):
+        # 标成多选但只有一个正确项时，不能把 "B" 拆坏
+        self.assertEqual(cx_fill._multi_picks("B"), ["B"])
+        self.assertEqual(cx_fill._multi_picks(["B"]), ["B"])
+
+
 class TestFillCli(unittest.TestCase):
     def test_save_exists_in_both_entrypoints(self):
         for mod in (cxwork, cx_fill):

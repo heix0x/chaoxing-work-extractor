@@ -53,6 +53,24 @@ STRONG_COOKIES = ("_uid", "UID", "uf")
 # 登录页特征
 LOGIN_URL_HINTS = ("passport2", "/login", "passport.chaoxing.com")
 
+# 探活用：未登录时被送去 passport2 登录页，登录后是正常的课程交互页。
+# 别用 mooc2-ans/mycourse/stu —— 它需要 courseid 参数，登录后反而显示「无效的参数」，
+# 让人以为登录失败了；也别用 i.chaoxing.com，那个域名的会话和 mooc 域是分开的，
+# 会出现「个人空间能打开、作业页却跳登录」的假阳性。
+PROBE_URL = "https://mooc1.chaoxing.com/visit/interaction"
+
+
+def looks_like_login(page) -> bool:
+    """页面是不是登录页。URL 与标题任一命中即可。"""
+    url = (page.url or "").lower()
+    if any(h in url for h in LOGIN_URL_HINTS):
+        return True
+    try:
+        return "登录" in (page.title() or "")
+    except Exception:
+        return False
+
+
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
@@ -164,6 +182,28 @@ class Session:
     def is_logged_in(self) -> bool:
         return any(k in self.auth_cookies() for k in STRONG_COOKIES)
 
+    def probe_session(self) -> bool:
+        """cookie 在 ≠ 会话有效。
+
+        超星的 `_uid`/`uf` 服务端过期后仍留在本地，只看 cookie 会把
+        「会话已失效」误判成「已登录」——`login` 一进循环就报成功、根本不等扫码，
+        `fetch` 抓回来的是登录页（2026-11-26 实测：i.chaoxing.com 显示个人空间，
+        但 mooc1/mooc2-ans 一律跳 passport）。
+
+        用 `ctx.request` 打一次受保护页面：它走 context 的 cookie，不新开标签页，
+        也不会把用户正在扫码的那个窗口导航走。被重定向到 passport 就算失效。
+        """
+        if not self.is_logged_in():
+            return False
+        try:
+            r = self.ctx.request.get(PROBE_URL, timeout=25_000)
+            if any(h in (r.url or "").lower() for h in LOGIN_URL_HINTS):
+                return False
+            return r.status < 400
+        except Exception as e:
+            eprint(f"[warn] 会话探活失败（先按已登录处理）：{e}")
+            return True
+
     def goto(self, url: str, wait_selector: str | None = None, timeout: int = 45_000):
         """打开页面并尽量等到内容渲染完。"""
         self.page.goto(url, wait_until="domcontentloaded", timeout=timeout)
@@ -181,6 +221,20 @@ class Session:
 
 
 # ---------------------------------------------------------------- 抓取
+
+def _open_work_page(s, url: str):
+    """打开作业页；被重定向到登录页就返回 None。
+
+    以前这一步不检查，`fetch` 会把登录页当作业页写成「用户登录.txt」，
+    看起来成功、其实抓到 299 个字 —— 上游只好靠人工发现。
+    """
+    page = s.goto(url)
+    if looks_like_login(page):
+        eprint("[!!] 打开后跳到了登录页，说明服务端会话已失效。")
+        eprint("     先跑：python cxwork.py login")
+        return None
+    return page
+
 
 def extract_page(page) -> dict:
     """从已加载的页面抽 URL、纯文本、HTML。
@@ -215,11 +269,12 @@ def cmd_login(args):
     eprint("      登录态只存在它自己的 profile 里。\n")
 
     with Session(headless=False) as s:
-        s.goto("https://mooc1.chaoxing.com/")
+        # 直接开受保护页面：未登录会被送去 passport 登录页，用户就在这个页面扫码
+        s.goto(PROBE_URL)
         deadline = time.time() + args.wait
         last_note = 0
         while time.time() < deadline:
-            if s.is_logged_in():
+            if s.probe_session():
                 cookies = s.auth_cookies()
                 s.save_state()
                 eprint(f"\n[ok] 登录态已保存，关键 cookie：{', '.join(cookies)}")
@@ -232,18 +287,21 @@ def cmd_login(args):
                 last_note = time.time()
             time.sleep(3)
 
-        eprint("\n[!!] 超时，没检测到登录 cookie。")
-        eprint("     可能是登录没完成，或者超星改了 cookie 名（检查 AUTH_COOKIES）。")
+        eprint("\n[!!] 超时，没等到有效会话。")
+        eprint("     登录没完成，或者登录后仍被重定向回 passport（换浏览器 / 换账号试试）。")
         return 2
 
 
 def cmd_check(args):
     with Session(headless=not args.headful) as s:
-        if s.is_logged_in():
+        if s.probe_session():
             cookies = s.auth_cookies()
             print(json.dumps({"logged_in": True, "cookies": list(cookies)}, ensure_ascii=False))
             return 0
-        print(json.dumps({"logged_in": False, "cookies": []}, ensure_ascii=False))
+        have = list(s.auth_cookies())
+        reason = "cookie 还在，但服务端会话已失效" if have else "没有登录 cookie"
+        print(json.dumps({"logged_in": False, "cookies": have, "reason": reason},
+                         ensure_ascii=False))
         return 1
 
 
@@ -255,7 +313,9 @@ def cmd_fetch(args):
         if not s.is_logged_in():
             eprint("[!!] 未登录。先跑：python cxwork.py login")
             return 2
-        page = s.goto(args.url)
+        page = _open_work_page(s, args.url)
+        if page is None:
+            return 2
         data = extract_page(page)
 
     # 文件名：优先用页面标题，去掉非法字符
@@ -351,7 +411,9 @@ def cmd_run(args):
         if not s.is_logged_in():
             eprint("[!!] 未登录。先跑：python cxwork.py login")
             return 2
-        page = s.goto(args.url)
+        page = _open_work_page(s, args.url)
+        if page is None:
+            return 2
         page_data = extract_page(page)
 
     stem = re.sub(r'[\\/:*?"<>|\s]+', "_", (page_data["title"] or "work"))[:60] or "work"

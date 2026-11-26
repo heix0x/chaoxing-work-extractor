@@ -1,5 +1,28 @@
 # 更新日志
 
+## [1.2.6] - 2026-11-26
+
+### 修复
+
+- **登录态判定改为真实探活**：`_uid`/`uf` 服务端过期后仍留在本地，旧逻辑只看 cookie 在不在，
+  导致 `login` 一进循环就报成功（根本不等扫码）、`fetch` 把登录页当作业页写出一个 299 字的
+  「用户登录.txt」。现在 `check` / `login` 用 `ctx.request` 打一次受保护页面，落到 passport 即判失效；
+  `fetch` / `run` 打开后若跳登录页直接报错退出
+- **多选题全部填不上**：答案写成紧凑串 `"ABD"` 时被当成单个字母匹配选项，点了 0 下仍只报
+  `ok: false`。新增 `_multi_picks()` 兼容 `["A","C"]` / `"A,C,D"` / `"ACD"` 三种写法，
+  并优先点击内层 `span.num_option_dx`
+- `_click_choice()` 点击失败时先回退到外层容器，再走 aria-label 兜底
+
+### 测试
+
+- 新增 `TestMultiPicks` 四条回归（共 28 项）
+
+### 文档
+
+- `references/troubleshooting.md` 第十二节：探活地址的三选一（`i.chaoxing.com` 假阳性、
+  `mycourse/stu` 显示「无效的参数」、`visit/interaction` 才对）、多选失败的排查顺序
+- 安装提示词收敛到「只有用户能做的事」；README 安装段补「点 + / 输入 / 看技能列表」的验收
+
 ## [1.2.5] - 2026-11-24
 
 ### 文档

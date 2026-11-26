@@ -238,15 +238,30 @@ def _choice_letter(bg) -> str:
 
 
 def _click_choice(slot: Slot, letter: str, page) -> bool:
-    """点 div.answerBg。新版选项不认 setting checked，只能真点。"""
+    """点 div.answerBg 里的选项。新版选项不认 setting checked，只能真点。
+
+    多选的点击事件绑在内层 `span.num_option_dx` 上，点外层 div 不触发——
+    表现为「单选能填、多选全空」（2026-11-26 实测第 3~7 题）。所以优先点内层。
+    """
     letter = letter.strip().upper()
     try:
         for bg in slot.controls:
             data = _choice_letter(bg)
             if data.upper() == letter:
-                bg.scroll_into_view_if_needed()
-                bg.click(timeout=5000)
-                return True
+                target = bg
+                try:
+                    inner = bg.query_selector(".num_option_dx")
+                    if inner is not None:
+                        target = inner
+                except Exception:
+                    pass
+                try:
+                    target.scroll_into_view_if_needed()
+                    target.click(timeout=5000)
+                    return True
+                except Exception:
+                    bg.click(timeout=5000)
+                    return True
         # 兜底：按 aria-label 前缀匹配（"A 功能模型……"）
         for bg in slot.controls:
             lbl = bg.get_attribute("aria-label") or ""
@@ -453,6 +468,26 @@ def _fill_text(slot: Slot, text: str) -> bool:
 
 # ---------------------------------------------------------------- 应用一条答案
 
+def _multi_picks(ans) -> list[str]:
+    """把多选答案拆成字母列表。
+
+    三种写法都要认：["A","C","D"]、\"A,C,D\"、\"ACD\"。
+    早期只按逗号/空格切，\"ACD\" 会被当成一个字母去找选项，
+    结果 done=0、回读空，报告说失败但没人知道为什么（2026-11-26 实测）。
+    """
+    raw = ans if isinstance(ans, list) else [x for x in re.split(r"[,，、\s]+", str(ans)) if x]
+    picks: list[str] = []
+    for p in raw:
+        s = str(p).strip().upper()
+        if not s:
+            continue
+        if len(s) > 1 and all(ch in "ABCDEFGH" for ch in s):
+            picks.extend(list(s))
+        else:
+            picks.append(s)
+    return picks
+
+
 def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
     """把一条答案应用到一道题上。commit=False 时只检查可行性，不动页面。"""
     if slot.no is None:
@@ -491,8 +526,7 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
 
     # --- 新版点击式选项（多选） ---
     if slot.kind == "choice_multi":
-        picks = ans if isinstance(ans, list) else [x.strip() for x in re.split(r"[,，\s]+", ans) if x.strip()]
-        picks = [p.upper() for p in picks]
+        picks = _multi_picks(ans)
         if not commit:
             return {"no": slot.no, "ok": True, "planned": f"多选 {''.join(picks)}"}
         got0 = _read_choice(slot, page)
@@ -522,7 +556,7 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
 
     # --- 老版多选（checkbox） ---
     if slot.kind == "checkbox":
-        picks = ans if isinstance(ans, list) else [x.strip() for x in re.split(r"[,，\s]+", ans) if x.strip()]
+        picks = _multi_picks(ans)
         done = 0
         if commit:
             for p in picks:
