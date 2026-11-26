@@ -297,6 +297,38 @@ def _read_choice(slot: Slot, page) -> str:
         return ""
 
 
+def _read_choice_text(slot: Slot, page) -> str:
+    """回读「选中的是哪些**选项内容**」，不只是字母。
+
+    为什么需要：字母只是页面当场渲染的顺序，选项内容才是判分依据。
+    2026-11-26 这次作业出现「填入时读回 B，批改记录却是 A」的怪事，
+    只存字母就分不清是「点错了」还是「字母与内容的对应关系变了」。
+    日志里同时留字母和文本，下一次一眼能看出是哪种。
+    """
+    try:
+        return page.evaluate(
+            """q => {
+                const el = document.getElementById('answer' + q);
+                const letters = (el ? el.value : '').toUpperCase();
+                if (!letters) return '';
+                const box = document.getElementById('question' + q);
+                if (!box) return letters;
+                const picked = [];
+                for (const bg of box.querySelectorAll('.answerBg')) {
+                    const sp = bg.querySelector('span[data]');
+                    const L = sp ? (sp.getAttribute('data') || '').toUpperCase() : '';
+                    if (!letters.includes(L)) continue;
+                    const t = (bg.getAttribute('aria-label') || bg.innerText || '').replace(/\\s+/g, ' ').trim();
+                    picked.push(L + '.' + t.slice(0, 24));
+                }
+                return picked.join(' / ') || letters;
+            }""",
+            slot.qid,
+        ) or ""
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------- 新版：UEditor
 
 def _to_html(text: str) -> str:
@@ -510,7 +542,8 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
             time.sleep(0.35)
             got = _read_choice(slot, page)
             res = {"no": slot.no, "ok": bool(ok) and a.upper() in got,
-                   "planned": f"选 {a.upper()}", "readback": got, "before": before}
+                   "planned": f"选 {a.upper()}", "readback": got,
+                   "readback_text": _read_choice_text(slot, page), "before": before}
             if not res["ok"]:
                 res["why"] = (f"选项里找不到 {a.upper()}" if not ok
                               else f"点到了，但回读是 {got!r}")
@@ -548,6 +581,7 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
         got = _read_choice(slot, page)
         res = {"no": slot.no, "ok": done == len(picks) and all(p in got for p in picks),
                "planned": f"多选 {''.join(picks)}", "readback": got,
+               "readback_text": _read_choice_text(slot, page),
                "clicked": f"{done}/{len(picks)}"}
         if not res["ok"]:
             if miss:
