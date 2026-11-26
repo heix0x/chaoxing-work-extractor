@@ -153,6 +153,20 @@ def smoke_test(channel: str | None) -> bool:
     except Exception as e:
         warn(f"CLI 冒烟测试跳过：{e}")
 
+    # 仓库自带的 pre-commit：提交前跑同一套测试，别等发版才发现参数漂移。
+    # 只对 git 工作副本生效；从 zip 解压出来的目录没有 .git，跳过即可。
+    hooks = HERE / ".githooks"
+    if (HERE / ".git").exists() and hooks.is_dir():
+        try:
+            r = subprocess.run(["git", "config", "core.hooksPath", ".githooks"],
+                               cwd=str(HERE), capture_output=True, text=True, timeout=20)
+            if r.returncode == 0:
+                ok("已启用 .githooks/pre-commit（提交前自动跑测试）")
+            else:
+                warn("没能启用 pre-commit（git config 失败），提交前请手动跑测试")
+        except Exception as e:
+            warn(f"没能启用 pre-commit：{e}")
+
     return True
 
 

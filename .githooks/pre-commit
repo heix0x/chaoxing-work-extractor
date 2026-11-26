@@ -1,0 +1,20 @@
+#!/bin/sh
+# 提交前跑一遍契约测试（不需要浏览器）。
+# 启用一次即可：git config core.hooksPath .githooks
+# 跳过：git commit --no-verify（不推荐）
+
+cd "$(dirname "$0")/.." || exit 1
+
+PY=python3
+command -v python3 >/dev/null 2>&1 || PY=python
+
+echo "[pre-commit] 跑 tests/ ..."
+if ! CXWORK_NO_AUTOINSTALL=1 "$PY" -m unittest discover -s tests -q; then
+    echo ""
+    echo "[pre-commit] 测试没过，提交已拦下。"
+    echo "             只改文档也过不去的话，先看 tests/test_cli.py 里哪条断言红了 ——"
+    echo "             它会逐条核对 SKILL.md / README.md 里的命令和 CLI 参数是否一致。"
+    exit 1
+fi
+
+echo "[pre-commit] ok"

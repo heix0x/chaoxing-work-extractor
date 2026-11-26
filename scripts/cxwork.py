@@ -54,9 +54,10 @@ STRONG_COOKIES = ("_uid", "UID", "uf")
 LOGIN_URL_HINTS = ("passport2", "/login", "passport.chaoxing.com")
 
 # 探活用：未登录时被送去 passport2 登录页，登录后是正常的课程交互页。
-# 别用 mooc2-ans/mycourse/stu —— 它需要 courseid 参数，登录后反而显示「无效的参数」，
-# 让人以为登录失败了；也别用 i.chaoxing.com，那个域名的会话和 mooc 域是分开的，
-# 会出现「个人空间能打开、作业页却跳登录」的假阳性。
+# 选地址的坑（三个候选实测，别换）：
+#   i.chaoxing.com/base            —— 会话失效时仍显示个人空间，假阳性
+#   mooc2-ans/mycourse/stu         —— 缺 courseid，登录后显示「无效的参数」，像登录失败
+#   mooc1.chaoxing.com/visit/interaction —— 失效跳 passport、有效正常，用这个
 PROBE_URL = "https://mooc1.chaoxing.com/visit/interaction"
 
 
@@ -104,6 +105,11 @@ class Session:
         forced = os.environ.get("CXWORK_BROWSER")
         candidates = (forced,) if forced else BROWSER_ORDER
         last_err = None
+        lock_err = None
+        # profile 被残留进程占住时，三个通道都会失败，但报错各不相同；
+        # 旧逻辑只把最后一条（缺 chromium 内核）抛出去，看上去像「没装浏览器」。
+        LOCK_HINTS = ("processsingleton", "singletonlock", "already in use",
+                      "另一个程序", "user data directory")
         for ch in candidates:
             try:
                 self.ctx = self._pw.chromium.launch_persistent_context(
@@ -118,10 +124,21 @@ class Session:
                 break
             except Exception as e:
                 last_err = e
+                if any(h in str(e).lower() for h in LOCK_HINTS):
+                    lock_err = e
+                    break
                 continue
 
         if self.ctx is None:
             self._pw.stop()
+            if lock_err is not None:
+                raise RuntimeError(
+                    f"浏览器 profile 被占用：{PROFILE_DIR}\n"
+                    "多半是上次的自动化窗口没退干净（进程还在后台）。\n"
+                    "处理：任务管理器里结束所有命令行含 browser-profiles\\chaoxing 的\n"
+                    "msedge.exe / chrome.exe，然后重跑同一条命令。\n"
+                    f"原始错误：{str(lock_err)[:200]}"
+                )
             raise RuntimeError(
                 "没有可用的浏览器。装了 Edge 或 Chrome 就行，"
                 "或者跑 `playwright install chromium` 下载内置内核。"
@@ -182,6 +199,19 @@ class Session:
     def is_logged_in(self) -> bool:
         return any(k in self.auth_cookies() for k in STRONG_COOKIES)
 
+    def probe_detail(self) -> tuple[bool, str]:
+        """探活并给出人话原因，供 login 的等待提示使用。"""
+        if not self.is_logged_in():
+            return False, "还没有登录 cookie"
+        try:
+            r = self.ctx.request.get(PROBE_URL, timeout=25_000)
+            url = (r.url or "").lower()
+            if any(h in url for h in LOGIN_URL_HINTS):
+                return False, f"探活被送回登录页（HTTP {r.status}）"
+            return r.status < 400, f"探活通过（HTTP {r.status}）"
+        except Exception as e:
+            return True, f"探活异常，先按已登录处理：{e}"
+
     def probe_session(self) -> bool:
         """cookie 在 ≠ 会话有效。
 
@@ -193,16 +223,7 @@ class Session:
         用 `ctx.request` 打一次受保护页面：它走 context 的 cookie，不新开标签页，
         也不会把用户正在扫码的那个窗口导航走。被重定向到 passport 就算失效。
         """
-        if not self.is_logged_in():
-            return False
-        try:
-            r = self.ctx.request.get(PROBE_URL, timeout=25_000)
-            if any(h in (r.url or "").lower() for h in LOGIN_URL_HINTS):
-                return False
-            return r.status < 400
-        except Exception as e:
-            eprint(f"[warn] 会话探活失败（先按已登录处理）：{e}")
-            return True
+        return self.probe_detail()[0]
 
     def goto(self, url: str, wait_selector: str | None = None, timeout: int = 45_000):
         """打开页面并尽量等到内容渲染完。"""
@@ -273,8 +294,10 @@ def cmd_login(args):
         s.goto(PROBE_URL)
         deadline = time.time() + args.wait
         last_note = 0
+        detail = "还没开始探活"
         while time.time() < deadline:
-            if s.probe_session():
+            ok, detail = s.probe_detail()
+            if ok:
                 cookies = s.auth_cookies()
                 s.save_state()
                 eprint(f"\n[ok] 登录态已保存，关键 cookie：{', '.join(cookies)}")
@@ -283,12 +306,12 @@ def cmd_login(args):
                 return 0
             if time.time() - last_note > 15:
                 left = int(deadline - time.time())
-                eprint(f"  …等待登录中，还剩 {left} 秒")
+                eprint(f"  …等待登录中，还剩 {left} 秒｜{detail}")
                 last_note = time.time()
             time.sleep(3)
 
-        eprint("\n[!!] 超时，没等到有效会话。")
-        eprint("     登录没完成，或者登录后仍被重定向回 passport（换浏览器 / 换账号试试）。")
+        eprint(f"\n[!!] 超时，没等到有效会话。最后一次探活：{detail}")
+        eprint("     窗口里如果显示登录成功，把这个结果发给我；否则重跑 login 再扫一次。")
         return 2
 
 

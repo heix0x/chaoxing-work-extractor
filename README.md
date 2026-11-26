@@ -142,7 +142,7 @@ python scripts/cxwork.py verify <url> -o 核对.json    # 重载页面逐题核�
 
 ## 不支持的场景
 
-- **不生成答案**，也不包含提交动作
+- **答案内容由调用方负责**（用户给的，或上层 agent 做的），本工具只负责搬运；也不包含提交动作
 - **不绕过登录**。每个使用者需要用自己的账号登录一次
 - **抓不到动态加载的内容**（必须滚动或翻页才渲染的题目）
 - 兜底通道（操作已打开的浏览器）**仅支持 Windows**
@@ -292,6 +292,8 @@ macOS 同样有文件锁）。可行替代只有两条：管理员权限做卷�
 ## 维护（改这个仓库时看）
 
 - 依赖缺失时 CLI 会尝试自动 `pip install`；离线环境设 `CXWORK_NO_AUTOINSTALL=1`，再手动跑 `python install.py`。
+- **测试有两道自动闸**：`.githooks/pre-commit`（`python install.py` 时自动 `git config core.hooksPath .githooks`）
+  和 `.github/workflows/test.yml`（push / PR 都跑）。以前测试只在有人记得时跑，一个多选 bug 就这样活了四个版本。
 - 改完代码先跑 `python install.py`（内含 `tests/test_cli.py`）或 `python -m unittest discover -s tests -v`。
   测试会逐条核对 SKILL.md / README.md 里的示例命令与 CLI 参数，防止「文档教的参数代码里没有」这类漂移。
 - 改完记得 `git commit` 并重新打包 `dist/`（`python pack.py --version x.y.z`），否则工作区、仓库 HEAD、

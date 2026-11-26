@@ -509,8 +509,12 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
             ok = _click_choice(slot, a, page)
             time.sleep(0.35)
             got = _read_choice(slot, page)
-            return {"no": slot.no, "ok": bool(ok) and a.upper() in got,
-                    "planned": f"选 {a.upper()}", "readback": got, "before": before}
+            res = {"no": slot.no, "ok": bool(ok) and a.upper() in got,
+                   "planned": f"选 {a.upper()}", "readback": got, "before": before}
+            if not res["ok"]:
+                res["why"] = (f"选项里找不到 {a.upper()}" if not ok
+                              else f"点到了，但回读是 {got!r}")
+            return res
         if not commit:
             return {"no": slot.no, "ok": True, "planned": f"判断 {a}"}
         want = "true" if a in ("对", "正确") else "false"
@@ -533,15 +537,25 @@ def apply(slot: Slot, ans: str | list[str], commit: bool, page=None) -> dict:
         if sorted(got0.upper()) == sorted(picks):
             return {"no": slot.no, "ok": True, "planned": f"多选 {''.join(picks)}",
                     "readback": got0, "skipped": "已经是这个答案"}
-        done = 0
+        done, miss = 0, []
         for p in picks:
             if _click_choice(slot, p, page):
                 done += 1
                 time.sleep(0.25)
+            else:
+                miss.append(p)
         time.sleep(0.3)
         got = _read_choice(slot, page)
-        return {"no": slot.no, "ok": done == len(picks) and all(p in got for p in picks),
-                "planned": f"多选 {''.join(picks)}", "readback": got}
+        res = {"no": slot.no, "ok": done == len(picks) and all(p in got for p in picks),
+               "planned": f"多选 {''.join(picks)}", "readback": got,
+               "clicked": f"{done}/{len(picks)}"}
+        if not res["ok"]:
+            if miss:
+                res["why"] = f"选项里找不到 {''.join(miss)}"
+            else:
+                lack = "".join(p for p in picks if p not in got)
+                res["why"] = f"点了 {done} 个，回读 {got!r}，缺 {lack}"
+        return res
 
     # --- 老版单选（radio） ---
     if slot.kind == "radio":
@@ -674,12 +688,37 @@ def run(url: str, answers: dict[int, str | list[str]], commit: bool,
             "note": "填完后按 Ctrl+F5 强制刷新页面，答案才会显示（超星只在页面加载时读一次作答数据）。"
                     "本工具不会点击提交按钮，请自行核对后手动提交。",
         }
-        text = json.dumps(report, ensure_ascii=False, indent=2)
-        if out:
-            Path(out).write_text(text, encoding="utf-8")
-            print(f"[ok] 报告写到 {out}", file=sys.stderr)
-        print(text)
-        return 0
+
+    # 填完必核：只报 applied 不够，还得看服务端到底存住了什么。
+    # 以前这步靠人事后跑 verify，失败原因（点空/没找到选项）就埋在 details 里没人看。
+    code = 0
+    if commit and save:
+        try:
+            from cx_verify import verify_report
+            vr = verify_report(url)
+            report["verify"] = {k: vr[k] for k in ("questions", "filled", "empty")}
+            if vr["empty"]:
+                eprint(f"[!!] 重载核对：{len(vr['empty'])} 题仍是空的 → {vr['empty']}")
+                for r in results:
+                    if r.get("no") in vr["empty"] and r.get("why"):
+                        eprint(f"     第 {r['no']} 题：{r['why']}")
+                code = 3
+            else:
+                eprint(f"[ok] 重载核对：{vr['filled']}/{vr['questions']} 题全部读得回来")
+        except Exception as e:
+            report["verify"] = {"error": str(e)}
+            eprint(f"[warn] 自动核对失败：{e}")
+
+    text = json.dumps(report, ensure_ascii=False, indent=2)
+    if out:
+        Path(out).write_text(text, encoding="utf-8")
+        eprint(f"[ok] 报告写到 {out}")
+    print(text)
+    return code
+
+
+def eprint(*a):
+    print(*a, file=sys.stderr)
 
 
 def main(argv=None):

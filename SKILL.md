@@ -98,7 +98,7 @@ python scripts/cxwork.py verify "<URL>" -o ./out/核对.json
 ## 把答案填回答题页
 
 答案文件由用户提供，本工具只负责搬运，不生成内容。
-不要把模型生成的答案直接灌进答题页，那超出了这个工具的设计范围。
+答案内容由调用方负责（用户给的，或上层 agent 逐题做的），本工具只负责搬运。
 
 ```bash
 # 第一步：探测。只看页面结构、能匹配上几道题，不动页面
@@ -200,11 +200,13 @@ tests/sample_linux.txt         # 回归样本
 以前出过「文档写了 `fill --save` 但 argparse 没有」这种照做就丢数据的漂移。
 
 ```bash
-python install.py                              # 全绿再往下
+python install.py                              # 全绿再往下；顺手启用 .githooks/pre-commit
 python -m unittest discover -s tests -v        # 只跑测试
 ```
 
-改完记得 `git commit`，并把 `dist/` 里的 zip 重新打包，否则工作区、仓库 HEAD、分发包三份行为会不一致。
+测试有两道自动闸：`.githooks/pre-commit`（`install.py` 会写 `core.hooksPath`）与
+`.github/workflows/test.yml`（push/PR）。改完记得 `git commit`，并把 `dist/` 里的 zip 重新打包，
+否则工作区、仓库 HEAD、分发包三份行为会不一致。
 
 ## 分发
 

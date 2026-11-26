@@ -49,21 +49,26 @@ JS_VERIFY = r"""() => {
 }"""
 
 
-def verify(url: str, out: str | None = None, headful: bool = False) -> int:
+def verify_report(url: str, headful: bool = False) -> dict:
+    """重载页面，返回核对报告（不打印、不写文件）。
+
+    给 `fill --commit --save` 收尾时自动调用，也供 verify 子命令复用。
+    每次自己开一个 Session：调用方填答案的那个浏览器必须先关掉，
+    否则同一个 profile 会被占住（Chromium 的 ProcessSingleton 会直接拒绝）。
+    """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from cxwork import Session
 
     with Session(headless=not headful) as s:
         if not s.is_logged_in():
-            print(json.dumps({"ok": False, "error": "未登录，先跑 cxwork.py login"}, ensure_ascii=False))
-            return 2
+            raise RuntimeError("未登录，先跑 cxwork.py login")
         page = s.goto(url)
         time.sleep(3.0)   # UEditor 是异步初始化的，多等一会儿
         items = page.evaluate(JS_VERIFY)
         final_url = page.url
 
     filled = sum(1 for it in items if it["filled"])
-    report = {
+    return {
         "ok": filled == len(items) and len(items) > 0,
         "url": final_url,
         "questions": len(items),
@@ -72,6 +77,14 @@ def verify(url: str, out: str | None = None, headful: bool = False) -> int:
         "items": items,
         "note": "本工具只读，不点击提交按钮。若页面仍显示空白，按 Ctrl+F5 强制刷新。",
     }
+
+
+def verify(url: str, out: str | None = None, headful: bool = False) -> int:
+    try:
+        report = verify_report(url, headful)
+    except RuntimeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))
+        return 2
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if out:
         Path(out).write_text(text, encoding="utf-8")
