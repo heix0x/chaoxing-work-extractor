@@ -16,3 +16,6 @@ out/
 # 系统
 .DS_Store
 Thumbs.db
+
+# 工具在工作目录里落下的记忆/缓存
+.workbuddy/
